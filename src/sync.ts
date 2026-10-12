@@ -1,0 +1,27 @@
+import {supabase} from './data';
+import type {Work} from './model';
+
+type Pending={id:string;work:Work;version:number;baseRevision:number|null;attempts:number;error:string|null;blocked:boolean};
+type Stored={id:string;work:Work;revision:number|null};
+export type SyncState={pending:number;errors:number;syncing:boolean;offline:boolean};
+const DB='sgo-offline-v2';
+let dbPromise:Promise<IDBDatabase>|undefined;
+const listeners=new Set<(s:SyncState)=>void>();
+let syncing=false;
+const state:SyncState={pending:0,errors:0,syncing:false,offline:!navigator.onLine};
+const db=()=>dbPromise??=new Promise((resolve,reject)=>{const req=indexedDB.open(DB,1);req.onupgradeneeded=()=>{const d=req.result;d.createObjectStore('works',{keyPath:'id'});d.createObjectStore('queue',{keyPath:'id'})};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)});
+const request=<T>(req:IDBRequest<T>)=>new Promise<T>((resolve,reject)=>{req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)});
+async function read<T>(store:'works'|'queue',id:string):Promise<T|undefined>{const d=await db();return request<T|undefined>(d.transaction(store,'readonly').objectStore(store).get(id))}
+async function all<T>(store:'works'|'queue'):Promise<T[]>{const d=await db();return request<T[]>(d.transaction(store,'readonly').objectStore(store).getAll())}
+function transactionSave(work:Stored,pending:Pending){return db().then(d=>new Promise<void>((resolve,reject)=>{const tx=d.transaction(['works','queue'],'readwrite');tx.objectStore('works').put(work);tx.objectStore('queue').put(pending);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)}))}
+function transactionDelete(id:string){return db().then(d=>new Promise<void>((resolve,reject)=>{const tx=d.transaction('queue','readwrite');tx.objectStore('queue').delete(id);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)}))}
+async function emit(){const q=await all<Pending>('queue');Object.assign(state,{pending:q.length,errors:q.filter(x=>x.blocked).length,syncing,offline:!navigator.onLine});listeners.forEach(l=>l({...state}))}
+export function observeSync(listener:(s:SyncState)=>void){listeners.add(listener);listener({...state});void emit();return()=>{listeners.delete(listener)}}
+export async function cachedWorks(){return(await all<Stored>('works')).map(x=>x.work)}
+export async function enqueueWork(work:Work){const old=await read<Pending>('queue',work.id);const saved=await read<Stored>('works',work.id);const version=(old?.version??0)+1;const pending:Pending={id:work.id,work,version,baseRevision:old?.baseRevision??saved?.revision??null,attempts:0,error:null,blocked:false};await transactionSave({id:work.id,work,revision:saved?.revision??null},pending);await emit();void flushQueue()}
+export async function mergeRemote(rows:{id:string;payload:Work;revision:number}[]){const pendingIds=new Set((await all<Pending>('queue')).map(x=>x.id));const d=await db();const tx=d.transaction('works','readwrite');const store=tx.objectStore('works');for(const row of rows)if(!pendingIds.has(row.id))store.put({id:row.id,work:row.payload,revision:row.revision});await new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)});return cachedWorks()}
+export async function flushQueue(){if(syncing||!supabase||!navigator.onLine)return;syncing=true;await emit();try{for(const item of await all<Pending>('queue')){if(item.blocked)continue;try{const{data,error}=await supabase.rpc('save_work_if_revision',{p_id:item.id,p_created_at:item.work.createdAt,p_payload:item.work,p_expected_revision:item.baseRevision});if(error)throw error;const result=data as {ok:boolean;revision?:number;reason?:string};if(!result?.ok){const latest=await read<Pending>('queue',item.id);if(latest?.version===item.version){latest.blocked=true;latest.error=result?.reason||'Conflito de versão';await putPending(latest)}continue}const latest=await read<Pending>('queue',item.id);if(latest?.version===item.version){await updateConfirmed(item.id,item.work,result.revision??0);await transactionDelete(item.id)}else if(latest){latest.baseRevision=result.revision??0;await putPending(latest)}}catch(e){const latest=await read<Pending>('queue',item.id);if(latest?.version===item.version){latest.attempts++;latest.error=String(e);const msg=String(e).toLowerCase();latest.blocked=/permission|policy|denied|forbidden|validation|invalid|not found|could not find the function/.test(msg);await putPending(latest)}break}}}finally{syncing=false;await emit()}}
+async function putPending(item:Pending){const d=await db();await request(d.transaction('queue','readwrite').objectStore('queue').put(item))}
+async function updateConfirmed(id:string,work:Work,revision:number){const d=await db();await request(d.transaction('works','readwrite').objectStore('works').put({id,work,revision}))}
+export function startSync(){const online=()=>{void emit();void flushQueue()};const offline=()=>void emit();window.addEventListener('online',online);window.addEventListener('offline',offline);const interval=window.setInterval(()=>void flushQueue(),15000);void flushQueue();return()=>{window.removeEventListener('online',online);window.removeEventListener('offline',offline);clearInterval(interval)}}
+export async function retryErrors(){for(const item of await all<Pending>('queue'))if(item.blocked){item.blocked=false;item.error=null;await putPending(item)}await emit();void flushQueue()}
