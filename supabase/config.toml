@@ -1,0 +1,5 @@
+[functions.admin-users]
+verify_jwt = true
+
+[functions.drive-files]
+verify_jwt = true
