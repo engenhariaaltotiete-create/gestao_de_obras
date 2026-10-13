@@ -954,7 +954,7 @@ function PhotoReportsBlock({work, users, admin, save}: {work: Work; users: User[
     catch (failure) {setError(String(failure));}
   };
   return <>
-    <Reports work={draft} users={users} admin={admin} editing={true} update={(patch)=>setDraft((current)=>({...current,...patch}))} onSaveDraft={persist} onConclude={async (id)=>{const updated={...work,reports:draft.reports.map((item)=>item.id===id?{...item,status:"CONCLUÍDO"}:item)};await save(updated);setDraft(updated);}}/>
+    <Reports work={draft} users={users} admin={admin} editing={true} update={(patch)=>setDraft((current)=>({...current,...patch}))} onSaveDraft={persist} onConclude={async (id)=>{const updated={...work,reports:draft.reports.map((item)=>item.id===id?{...item,status: "CONCLUÍDO" as const}:item)};await save(updated);setDraft(updated);}}/>
     {error && <p className="error">{error}</p>}
   </>;
 }
