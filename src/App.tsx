@@ -16,10 +16,7 @@ import {
 import Budget from "./domains/Budget";
 import EditableBlock from "./domains/EditableBlock";
 
-import {
-  Dashboard,
-  WorkSchedule,
-} from "./domains/Schedule";
+import { Dashboard, WorkSchedule } from "./domains/Schedule";
 
 import UserAdmin from "./domains/UserAdmin";
 
@@ -34,11 +31,7 @@ import {
   type SyncState,
 } from "./sync";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   Building2,
@@ -58,12 +51,16 @@ import {
   Check,
   Menu,
   X,
+  FileText,
+  ExternalLink,
 } from "lucide-react";
 
 import MapEditor from "./MapEditor";
 
 import {
   STAGES,
+  isChecklist,
+  executionStage,
   STAGE_STATUS,
   DOC_STATUS,
   MUNICIPIOS,
@@ -78,7 +75,7 @@ import {
   executionPercent,
   budgetTotal,
   syncStages,
-  workStatus,
+  executionStatus,
   statusColor,
   overdue,
   money,
@@ -104,14 +101,10 @@ import {
 } from "./data";
 
 type Page =
-  | "dashboard"
-  | "obras"
-  | "carteira"
-  | "usuarios"
-  | "auditoria"
-  | "obra";
+  "dashboard" | "obras" | "carteira" | "usuarios" | "auditoria" | "obra";
 
 type Filters = {
+  requester: string[];
   priority: string[];
   city: string[];
   service: string[];
@@ -132,6 +125,7 @@ type Filters = {
 };
 
 const emptyFilters = (): Filters => ({
+  requester: [],
   priority: [],
   city: [],
   service: [],
@@ -153,58 +147,33 @@ const emptyFilters = (): Filters => ({
 
 const displayDate = (value: string) =>
   value
-    ? new Date(
-        value.slice(0, 10) +
-          "T12:00:00",
-      ).toLocaleDateString("pt-BR")
+    ? new Date(value.slice(0, 10) + "T12:00:00").toLocaleDateString("pt-BR")
     : "—";
 
-function Pill({
-  status,
-  end,
-}: {
-  status: string;
-  end?: string;
-}) {
+function Pill({ status, end }: { status: string; end?: string }) {
   return (
     <span
-      className={
-        "pill " +
-        statusColor(status, end)
-      }
-      title={
-        end && overdue(status, end)
-          ? "Prazo vencido — " + status
-          : ""
-      }
+      className={"pill " + statusColor(status, end)}
+      title={end && overdue(status, end) ? "Prazo vencido — " + status : ""}
     >
       {status}
     </span>
   );
 }
 
-function Progress({
-  value,
-}: {
-  value: number | null;
-}) {
+function Progress({ value }: { value: number | null }) {
   return (
     <span
       className={
         "progress " +
-        (
-          value === 100
-            ? "green"
-            : value !== null &&
-                value < 40
-              ? "red"
-              : "blue"
-        )
+        (value === 100
+          ? "green"
+          : value !== null && value < 40
+            ? "red"
+            : "blue")
       }
     >
-      {value === null
-        ? "N/A"
-        : Number(value.toFixed(1)) + "%"}
+      {value === null ? "N/A" : Number(value.toFixed(1)) + "%"}
     </span>
   );
 }
@@ -229,15 +198,9 @@ function Multi({
 
       <button
         className="multi-trigger"
-        onClick={() =>
-          setOpen((current) => !current)
-        }
+        onClick={() => setOpen((current) => !current)}
       >
-        {value.length
-          ? value.join(", ")
-          : "Todos"}
-        {" "}
-        <ChevronDown size={13} />
+        {value.length ? value.join(", ") : "Todos"} <ChevronDown size={13} />
       </button>
 
       {open && (
@@ -245,50 +208,29 @@ function Multi({
           <input
             placeholder="Pesquisar..."
             value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
+            onChange={(event) => setSearch(event.target.value)}
           />
 
           {options
-            .filter(
-              (option) =>
-                normalize(option).includes(
-                  normalize(search),
-                ),
-            )
-            .map(
-              (option) => (
-                <label
-                  key={option}
-                  className="checkrow"
-                >
-                  <input
-                    type="checkbox"
-                    checked={
-                      value.includes(option)
-                    }
-                    onChange={(event) =>
-                      onChange(
-                        event.target.checked
-                          ? [...value, option]
-                          : value.filter(
-                              (selected) =>
-                                selected !== option,
-                            ),
-                      )
-                    }
-                  />
-                  {option}
-                </label>
-              ),
-            )}
+            .filter((option) => normalize(option).includes(normalize(search)))
+            .map((option) => (
+              <label key={option} className="checkrow">
+                <input
+                  type="checkbox"
+                  checked={value.includes(option)}
+                  onChange={(event) =>
+                    onChange(
+                      event.target.checked
+                        ? [...value, option]
+                        : value.filter((selected) => selected !== option),
+                    )
+                  }
+                />
+                {option}
+              </label>
+            ))}
 
-          <button
-            onClick={() => setOpen(false)}
-          >
-            Concluir
-          </button>
+          <button onClick={() => setOpen(false)}>Concluir</button>
         </div>
       )}
     </div>
@@ -302,6 +244,7 @@ function FilterBar({
   setFilters,
   users,
   showAdvanced = true,
+  works,
 }: {
   query: string;
   setQuery: (value: string) => void;
@@ -309,26 +252,17 @@ function FilterBar({
   setFilters: (value: Filters) => void;
   users: User[];
   showAdvanced?: boolean;
+  works: Work[];
 }) {
   const [open, setOpen] = useState(false);
 
   const count = Object.values(filters).reduce(
     (total, value) =>
-      total +
-      (
-        Array.isArray(value)
-          ? value.length
-          : value
-            ? 1
-            : 0
-      ),
+      total + (Array.isArray(value) ? value.length : value ? 1 : 0),
     0,
   );
 
-  const set = (
-    key: keyof Filters,
-    value: string[] | string,
-  ) =>
+  const set = (key: keyof Filters, value: string[] | string) =>
     setFilters({
       ...filters,
       [key]: value,
@@ -342,82 +276,53 @@ function FilterBar({
 
           <input
             value={query}
-            onChange={(event) =>
-              setQuery(event.target.value)
-            }
+            onChange={(event) => setQuery(event.target.value)}
             placeholder="Pesquisar em todos os campos..."
           />
         </div>
 
         {showAdvanced && (
           <button
-            onClick={() =>
-              setOpen((current) => !current)
-            }
+            onClick={() => setOpen((current) => !current)}
             className="filter-button"
           >
-            <SlidersHorizontal size={15} />
-            {" "}Filtros{" "}
-
-            {count > 0 && (
-              <span className="counter">
-                {count}
-              </span>
-            )}
-
-            {open
-              ? <ChevronUp size={14} />
-              : <ChevronDown size={14} />}
+            <SlidersHorizontal size={15} /> Filtros{" "}
+            {count > 0 && <span className="counter">{count}</span>}
+            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
         )}
       </div>
 
       {count > 0 && (
         <div className="filter-chips">
-          {Object.entries(filters).flatMap(
-            ([key, value]) =>
-              Array.isArray(value)
-                ? value.map(
-                    (selected) => (
-                      <button
-                        key={key + selected}
-                        onClick={() =>
-                          set(
-                            key as keyof Filters,
-                            value.filter(
-                              (item) =>
-                                item !== selected,
-                            ),
-                          )
-                        }
-                      >
-                        {selected} ×
-                      </button>
-                    ),
-                  )
-                : value
-                  ? [
-                      <button
-                        key={key}
-                        onClick={() =>
-                          set(
-                            key as keyof Filters,
-                            "",
-                          )
-                        }
-                      >
-                        {key}: {value} ×
-                      </button>,
-                    ]
-                  : [],
+          {Object.entries(filters).flatMap(([key, value]) =>
+            Array.isArray(value)
+              ? value.map((selected) => (
+                  <button
+                    key={key + selected}
+                    onClick={() =>
+                      set(
+                        key as keyof Filters,
+                        value.filter((item) => item !== selected),
+                      )
+                    }
+                  >
+                    {selected} ×
+                  </button>
+                ))
+              : value
+                ? [
+                    <button
+                      key={key}
+                      onClick={() => set(key as keyof Filters, "")}
+                    >
+                      {key}: {value} ×
+                    </button>,
+                  ]
+                : [],
           )}
 
-          <button
-            className="clear"
-            onClick={() =>
-              setFilters(emptyFilters())
-            }
-          >
+          <button className="clear" onClick={() => setFilters(emptyFilters())}>
             Limpar todos
           </button>
         </div>
@@ -427,186 +332,137 @@ function FilterBar({
         <div className="filter-panel">
           <div className="filter-grid">
             <Multi
+              label="Solicitante"
+              options={[
+                ...new Map(
+                  works
+                    .map((w) => w.requester.trim())
+                    .filter(Boolean)
+                    .map((value) => [normalize(value), value]),
+                ).values(),
+              ].sort((a, b) => a.localeCompare(b, "pt-BR"))}
+              value={filters.requester}
+              onChange={(value) => set("requester", value)}
+            />
+            <Multi
               label="Prioridade"
               options={["Baixa", "Média", "Alta"]}
               value={filters.priority}
-              onChange={(value) =>
-                set("priority", value)
-              }
+              onChange={(value) => set("priority", value)}
             />
 
             <Multi
               label="Município"
               options={MUNICIPIOS}
               value={filters.city}
-              onChange={(value) =>
-                set("city", value)
-              }
+              onChange={(value) => set("city", value)}
             />
 
             <Multi
               label="Serviço"
               options={SERVICOS}
               value={filters.service}
-              onChange={(value) =>
-                set("service", value)
-              }
+              onChange={(value) => set("service", value)}
             />
 
             <Multi
               label="A/E"
               options={["Água", "Esgoto"]}
               value={filters.ae}
-              onChange={(value) =>
-                set("ae", value)
-              }
+              onChange={(value) => set("ae", value)}
             />
 
             <Multi
               label="Objetivo"
               options={OBJETIVOS}
               value={filters.goal}
-              onChange={(value) =>
-                set("goal", value)
-              }
+              onChange={(value) => set("goal", value)}
             />
 
             <Multi
               label="Método"
               options={["VCA", "MND"]}
               value={filters.method}
-              onChange={(value) =>
-                set("method", value)
-              }
+              onChange={(value) => set("method", value)}
             />
 
             <Multi
               label="Pavimento"
               options={PAVIMENTOS}
               value={filters.pavement}
-              onChange={(value) =>
-                set("pavement", value)
-              }
+              onChange={(value) => set("pavement", value)}
             />
 
             <Multi
               label="Responsável"
               options={[
                 "Sem responsável",
-                ...users
-                  .filter((user) => user.active)
-                  .map((user) => user.name),
+                ...users.filter((user) => user.active).map((user) => user.name),
               ]}
               value={filters.responsible}
-              onChange={(value) =>
-                set("responsible", value)
-              }
+              onChange={(value) => set("responsible", value)}
             />
 
             <Multi
               label="Etapa"
               options={[...STAGES]}
               value={filters.stage}
-              onChange={(value) =>
-                set("stage", value)
-              }
+              onChange={(value) => set("stage", value)}
             />
 
             <Multi
               label="Documento"
-              options={[
-                ...newWork().startDocs,
-                ...newWork().endDocs,
-              ].map((doc) => doc.name)}
+              options={[...newWork().startDocs, ...newWork().endDocs].map(
+                (doc) => doc.name,
+              )}
               value={filters.document}
-              onChange={(value) =>
-                set("document", value)
-              }
+              onChange={(value) => set("document", value)}
             />
 
             <Multi
               label="Status"
               options={[...STAGE_STATUS]}
               value={filters.status}
-              onChange={(value) =>
-                set("status", value)
-              }
+              onChange={(value) => set("status", value)}
             />
           </div>
 
           <div className="date-grid">
             {[
-              [
-                "Previsão de início",
-                "startFrom",
-                "startTo",
-              ],
-              [
-                "Previsão de término",
-                "endFrom",
-                "endTo",
-              ],
-              [
-                "Data Status",
-                "statusFrom",
-                "statusTo",
-              ],
-            ].map(
-              ([name, from, to]) => (
-                <div key={name}>
-                  <label>
-                    {name} (de / até)
-                  </label>
+              ["Previsão de início", "startFrom", "startTo"],
+              ["Previsão de término", "endFrom", "endTo"],
+              ["Data Status", "statusFrom", "statusTo"],
+            ].map(([name, from, to]) => (
+              <div key={name}>
+                <label>{name} (de / até)</label>
 
-                  <div className="datepair">
-                    <input
-                      type="date"
-                      value={
-                        filters[
-                          from as keyof Filters
-                        ] as string
-                      }
-                      onChange={(event) =>
-                        set(
-                          from as keyof Filters,
-                          event.target.value,
-                        )
-                      }
-                    />
+                <div className="datepair">
+                  <input
+                    type="date"
+                    value={filters[from as keyof Filters] as string}
+                    onChange={(event) =>
+                      set(from as keyof Filters, event.target.value)
+                    }
+                  />
 
-                    <input
-                      type="date"
-                      value={
-                        filters[
-                          to as keyof Filters
-                        ] as string
-                      }
-                      onChange={(event) =>
-                        set(
-                          to as keyof Filters,
-                          event.target.value,
-                        )
-                      }
-                    />
-                  </div>
+                  <input
+                    type="date"
+                    value={filters[to as keyof Filters] as string}
+                    onChange={(event) =>
+                      set(to as keyof Filters, event.target.value)
+                    }
+                  />
                 </div>
-              ),
-            )}
+              </div>
+            ))}
           </div>
 
           <div className="right">
-            <button
-              onClick={() =>
-                setFilters(emptyFilters())
-              }
-            >
+            <button onClick={() => setFilters(emptyFilters())}>
               Limpar filtros
             </button>
 
-            <button
-              className="primary"
-              onClick={() => setOpen(false)}
-            >
+            <button className="primary" onClick={() => setOpen(false)}>
               Aplicar e recolher
             </button>
           </div>
@@ -622,138 +478,64 @@ function fieldMatch(
   users: User[],
   items: Item[],
 ) {
-  const has = (
-    selected: string[],
-    value: string,
-  ) =>
-    !selected.length ||
-    selected.includes(value);
+  const has = (selected: string[], value: string) =>
+    !selected.length || selected.includes(value);
 
-  const all = [
-    ...work.stages,
-    ...work.startDocs,
-    ...work.endDocs,
-  ];
+  const all = [...work.stages, ...work.startDocs, ...work.endDocs];
 
-  const selected =
-    items.length ? items : all;
+  const selected = items.length ? items : all;
 
   const responsibleName = (item: Item) =>
-    users.find(
-      (user) => user.id === item.responsible,
-    )?.name || "";
+    users.find((user) => user.id === item.responsible)?.name || "";
 
-  const inRange = (
-    value: string,
-    from: string,
-    to: string,
-  ) =>
+  const inRange = (value: string, from: string, to: string) =>
     (!from && !to) ||
-    (
-      !!value &&
+    (!!value &&
       (!from || value.slice(0, 10) >= from) &&
-      (!to || value.slice(0, 10) <= to)
-    );
+      (!to || value.slice(0, 10) <= to));
 
   return (
+    (!filters.requester.length ||
+      filters.requester.some(
+        (value) => normalize(value) === normalize(work.requester.trim()),
+      )) &&
     has(filters.priority, work.priority) &&
     has(filters.city, work.city) &&
     has(filters.service, work.service) &&
     has(filters.ae, work.ae) &&
     has(filters.goal, work.goal) &&
     has(filters.method, work.method) &&
-
-    (
-      !filters.pavement.length ||
-      work.pavements.some(
-        (pavement) =>
-          filters.pavement.includes(
-            pavement.type,
-          ),
-      )
-    ) &&
-
-    (
-      !filters.responsible.length ||
+    (!filters.pavement.length ||
+      work.pavements.some((pavement) =>
+        filters.pavement.includes(pavement.type),
+      )) &&
+    (!filters.responsible.length ||
       selected.some(
         (item) =>
-          filters.responsible.includes(
-            responsibleName(item),
-          ) ||
-          (
-            !item.responsible &&
-            filters.responsible.includes(
-              "Sem responsável",
-            )
-          ),
-      )
-    ) &&
-
-    (
-      !filters.stage.length ||
-      work.stages.some(
-        (item) =>
-          filters.stage.includes(item.name),
-      )
-    ) &&
-
-    (
-      !filters.document.length ||
-      [
-        ...work.startDocs,
-        ...work.endDocs,
-      ].some(
-        (item) =>
-          filters.document.includes(item.name),
-      )
-    ) &&
-
-    (
-      !filters.status.length ||
-      selected.some(
-        (item) =>
-          filters.status.includes(item.status),
-      ) ||
-      filters.status.includes(
-        workStatus(work),
-      )
-    ) &&
-
-    (
-      (!filters.startFrom && !filters.startTo) ||
-      selected.some(
-        (item) =>
-          inRange(
-            item.start,
-            filters.startFrom,
-            filters.startTo,
-          ),
-      )
-    ) &&
-
-    (
-      (!filters.endFrom && !filters.endTo) ||
-      selected.some(
-        (item) =>
-          inRange(
-            item.end,
-            filters.endFrom,
-            filters.endTo,
-          ),
-      )
-    ) &&
-
-    (
-      (!filters.statusFrom && !filters.statusTo) ||
-      selected.some(
-        (item) =>
-          inRange(
-            item.statusAt,
-            filters.statusFrom,
-            filters.statusTo,
-          ),
-      )
-    )
+          filters.responsible.includes(responsibleName(item)) ||
+          (!item.responsible &&
+            filters.responsible.includes("Sem responsável")),
+      )) &&
+    (!filters.stage.length ||
+      work.stages.some((item) => filters.stage.includes(item.name))) &&
+    (!filters.document.length ||
+      [...work.startDocs, ...work.endDocs].some((item) =>
+        filters.document.includes(item.name),
+      )) &&
+    (!filters.status.length ||
+      selected.some((item) => filters.status.includes(item.status))) &&
+    ((!filters.startFrom && !filters.startTo) ||
+      selected.some((item) =>
+        inRange(item.start, filters.startFrom, filters.startTo),
+      )) &&
+    ((!filters.endFrom && !filters.endTo) ||
+      selected.some((item) =>
+        inRange(item.end, filters.endFrom, filters.endTo),
+      )) &&
+    ((!filters.statusFrom && !filters.statusTo) ||
+      selected.some((item) =>
+        inRange(item.statusAt, filters.statusFrom, filters.statusTo),
+      ))
   );
 }
 
@@ -763,9 +545,7 @@ function matchesQuery(
   users: User[],
   items: Item[] = [],
 ) {
-  const terms = normalize(query)
-    .split(/\s+/)
-    .filter(Boolean);
+  const terms = normalize(query).split(/\s+/).filter(Boolean);
 
   if (!terms.length) {
     return true;
@@ -774,35 +554,24 @@ function matchesQuery(
   const haystack = normalize(
     JSON.stringify({
       ...work,
-      stages:
-        items.length ? items : work.stages,
-      startDocs:
-        items.length ? [] : work.startDocs,
-      endDocs:
-        items.length ? [] : work.endDocs,
+      stages: items.length ? items : work.stages,
+      startDocs: items.length ? [] : work.startDocs,
+      endDocs: items.length ? [] : work.endDocs,
     }) +
-    " " +
-    users.map((user) => user.name).join(" "),
+      " " +
+      users.map((user) => user.name).join(" "),
   );
 
-  return terms.every(
-    (term) => haystack.includes(term),
-  );
+  return terms.every((term) => haystack.includes(term));
 }
 
-function Login({
-  onDemo,
-}: {
-  onDemo: () => void;
-}) {
+function Login({ onDemo }: { onDemo: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const submit = async (
-    event: React.FormEvent,
-  ) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
 
     if (!supabase) {
@@ -811,11 +580,10 @@ function Login({
 
     setLoading(true);
 
-    const { error } =
-      await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
     if (error) {
       setError(error.message);
@@ -838,20 +606,13 @@ function Login({
             GESTÃO DE OBRAS
           </strong>
 
-          <small>
-            Infraestrutura de Água e Esgoto
-          </small>
+          <small>Infraestrutura de Água e Esgoto</small>
         </div>
       </div>
 
-      <form
-        className="login-card"
-        onSubmit={submit}
-      >
+      <form className="login-card" onSubmit={submit}>
         <h2>Acesse sua conta</h2>
-        <p>
-          Entre com suas credenciais para continuar
-        </p>
+        <p>Entre com suas credenciais para continuar</p>
 
         <label>E-mail</label>
 
@@ -859,9 +620,7 @@ function Login({
           type="email"
           required
           value={email}
-          onChange={(event) =>
-            setEmail(event.target.value)
-          }
+          onChange={(event) => setEmail(event.target.value)}
           placeholder="seu@email.com"
         />
 
@@ -871,17 +630,11 @@ function Login({
           type="password"
           required={!!supabase}
           value={password}
-          onChange={(event) =>
-            setPassword(event.target.value)
-          }
+          onChange={(event) => setPassword(event.target.value)}
           placeholder="Sua senha"
         />
 
-        {error && (
-          <div className="error">
-            {error}
-          </div>
-        )}
+        {error && <div className="error">{error}</div>}
 
         {supabase && (
           <button
@@ -897,18 +650,12 @@ function Login({
                 return;
               }
 
-              const { error } =
-                await supabase.auth
-                  .resetPasswordForEmail(
-                    email,
-                    {
-                      redirectTo:
-                        new URL(
-                          ".",
-                          location.href,
-                        ).href,
-                    },
-                  );
+              const { error } = await supabase.auth.resetPasswordForEmail(
+                email,
+                {
+                  redirectTo: new URL(".", location.href).href,
+                },
+              );
 
               setError(
                 error
@@ -921,10 +668,7 @@ function Login({
           </button>
         )}
 
-        <button
-          className="primary login-submit"
-          disabled={loading}
-        >
+        <button className="primary login-submit" disabled={loading}>
           {loading
             ? "Entrando..."
             : supabase
@@ -934,10 +678,8 @@ function Login({
 
         {!supabase && (
           <p className="demo-notice">
-            Modo local de demonstração.
-            Configure o Supabase para
-            autenticação real e dados
-            compartilhados.
+            Modo local de demonstração. Configure o Supabase para autenticação
+            real e dados compartilhados.
           </p>
         )}
       </form>
@@ -945,18 +687,53 @@ function Login({
   );
 }
 
-function PhotoReportsBlock({work, users, admin, save}: {work: Work; users: User[]; admin: boolean; save: (work: Work) => Promise<void>}) {
+function PhotoReportsBlock({
+  work,
+  users,
+  admin,
+  save,
+}: {
+  work: Work;
+  users: User[];
+  admin: boolean;
+  save: (work: Work) => Promise<void>;
+}) {
   const [draft, setDraft] = useState<Work>(work);
   const [error, setError] = useState("");
-  useEffect(() => {setDraft(work);}, [work]);
+  useEffect(() => {
+    setDraft(work);
+  }, [work]);
   const persist = async () => {
-    try { await save({...work, reports:draft.reports}); setError(""); }
-    catch (failure) {setError(String(failure));}
+    try {
+      await save({ ...work, reports: draft.reports });
+      setError("");
+    } catch (failure) {
+      setError(String(failure));
+    }
   };
-  return <>
-    <Reports work={draft} users={users} admin={admin} editing={true} update={(patch)=>setDraft((current)=>({...current,...patch}))} onSaveDraft={persist} onConclude={async (id)=>{const updated={...work,reports:draft.reports.map((item)=>item.id===id?{...item,status: "CONCLUÍDO" as const}:item)};await save(updated);setDraft(updated);}}/>
-    {error && <p className="error">{error}</p>}
-  </>;
+  return (
+    <>
+      <Reports
+        work={draft}
+        users={users}
+        admin={admin}
+        editing={true}
+        update={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+        onSaveDraft={persist}
+        onConclude={async (id) => {
+          const updated = {
+            ...work,
+            reports: draft.reports.map((item) =>
+              item.id === id ? { ...item, status: "CONCLUÍDO" as const } : item,
+            ),
+          };
+          await save(updated);
+          setDraft(updated);
+        }}
+      />
+      {error && <p className="error">{error}</p>}
+    </>
+  );
 }
 
 function WorkForm({
@@ -966,22 +743,25 @@ function WorkForm({
   work: Work;
   update: (patch: Partial<Work>) => void;
 }) {
-  const input = (
-    label: string,
-    key: keyof Work,
-    type = "text",
-  ) => (
+  const input = (label: string, key: keyof Work, type = "text") => (
     <div className="form-field">
-      <label>{label}{key !== "createdAt" && <span className="required-star">*</span>}</label>
+      <label htmlFor={"work-" + key}>
+        {label}
+        {key !== "createdAt" && <span className="required-star">*</span>}
+      </label>
 
       <input
+        id={"work-" + key}
+        aria-label={label}
         required
-        min={
-          type === "number" ? 0 : undefined
-        }
+        min={type === "number" ? 0 : undefined}
         readOnly={key === "createdAt"}
         type={type}
-        value={key === "createdAt" ? new Date(work.createdAt).toLocaleDateString("pt-BR") : String(work[key] ?? "")} 
+        value={
+          key === "createdAt"
+            ? new Date(work.createdAt).toLocaleDateString("pt-BR")
+            : String(work[key] ?? "")
+        }
         onChange={(event) =>
           update({
             [key]:
@@ -994,15 +774,16 @@ function WorkForm({
     </div>
   );
 
-  const select = (
-    label: string,
-    key: keyof Work,
-    options: string[],
-  ) => (
+  const select = (label: string, key: keyof Work, options: string[]) => (
     <div className="form-field">
-      <label>{label}<span className="required-star">*</span></label>
+      <label htmlFor={"work-" + key}>
+        {label}
+        <span className="required-star">*</span>
+      </label>
 
       <select
+        id={"work-" + key}
+        aria-label={label}
         value={String(work[key])}
         onChange={(event) =>
           update({
@@ -1010,13 +791,9 @@ function WorkForm({
           })
         }
       >
-        {options.map(
-          (option) => (
-            <option key={option}>
-              {option}
-            </option>
-          ),
-        )}
+        {options.map((option) => (
+          <option key={option}>{option}</option>
+        ))}
       </select>
     </div>
   );
@@ -1027,39 +804,20 @@ function WorkForm({
       {input("Endereço", "address")}
       {input("Bairro", "district")}
 
-      {select(
-        "Município",
-        "city",
-        [...new Set([...MUNICIPIOS, work.city])],
-      )}
+      {select("Município", "city", [...new Set([...MUNICIPIOS, work.city])])}
 
-      {select(
-        "Objetivo",
-        "goal",
-        [...new Set([...OBJETIVOS, work.goal])],
-      )}
+      {select("Objetivo", "goal", [...new Set([...OBJETIVOS, work.goal])])}
 
       {input("Solicitante", "requester")}
-      {input(
-        "Documento de solicitação",
-        "requestDocument",
-      )}
+      {input("Documento de solicitação", "requestDocument")}
 
-      {select(
-        "Tipo de obra",
-        "kind",
-        ["Linear", "Pontual"],
-      )}
+      {select("Tipo de obra", "kind", ["Linear", "Pontual"])}
 
       {select("A/E", "ae", ["Água", "Esgoto"])}
       {select("Serviço", "service", SERVICOS)}
       {select("Método", "method", ["VCA", "MND"])}
 
-      {select(
-        "Prioridade",
-        "priority",
-        ["Baixa", "Média", "Alta"],
-      )}
+      {select("Prioridade", "priority", ["Baixa", "Média", "Alta"])}
 
       {input("Lig.", "links", "number")}
       {input("PNG", "png", "number")}
@@ -1069,12 +827,7 @@ function WorkForm({
       <div className="form-field">
         <label>Extensão calculada (m)</label>
 
-        <input
-          disabled
-          value={
-            meters(calculatedLength(work))
-          }
-        />
+        <input disabled value={meters(calculatedLength(work))} />
       </div>
 
       <div className="form-field wide">
@@ -1091,73 +844,54 @@ function WorkForm({
       </div>
 
       <div className="wide">
-        <strong>Pavimentos <span className="required-star">*</span></strong>
+        <strong>
+          Pavimentos <span className="required-star">*</span>
+        </strong>
 
         <div className="pavement-grid">
-          {PAVIMENTOS.map(
-            (type) => {
-              const pavement =
-                work.pavements.find(
-                  (item) =>
-                    item.type === type,
-                );
+          {PAVIMENTOS.map((type) => {
+            const pavement = work.pavements.find((item) => item.type === type);
 
-              return (
-                <div
-                  className="pavement"
-                  key={type}
-                >
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={!!pavement}
-                      onChange={(event) =>
-                        update({
-                          pavements:
-                            event.target.checked
-                              ? [
-                                  ...work.pavements,
-                                  { type, length: 0 },
-                                ]
-                              : work.pavements.filter(
-                                  (item) =>
-                                    item.type !== type,
-                                ),
-                        })
-                      }
-                    />
-                    {type}
-                  </label>
+            return (
+              <div className="pavement" key={type}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!pavement}
+                    onChange={(event) =>
+                      update({
+                        pavements: event.target.checked
+                          ? [...work.pavements, { type, length: 0 }]
+                          : work.pavements.filter((item) => item.type !== type),
+                      })
+                    }
+                  />
+                  {type}
+                </label>
 
-                  {pavement && (
-                    <input
-                      type="number"
-                      min="0"
-                      value={pavement.length}
-                      onChange={(event) =>
-                        update({
-                          pavements:
-                            work.pavements.map(
-                              (item) =>
-                                item.type === type
-                                  ? {
-                                      ...item,
-                                      length:
-                                        Number(
-                                          event.target.value,
-                                        ),
-                                    }
-                                  : item,
-                            ),
-                        })
-                      }
-                      placeholder="Extensão (m)"
-                    />
-                  )}
-                </div>
-              );
-            },
-          )}
+                {pavement && (
+                  <input
+                    type="number"
+                    min="0"
+                    value={pavement.length}
+                    onChange={(event) =>
+                      update({
+                        pavements: work.pavements.map((item) =>
+                          item.type === type
+                            ? {
+                                ...item,
+                                length: Number(event.target.value),
+                              }
+                            : item,
+                        ),
+                      })
+                    }
+                    placeholder="Extensão (m)"
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -1323,9 +1057,7 @@ function App() {
 
   const save = async (next: Work, previous?: Work) => {
     try {
-      const w = syncStages(
-        await externalizeReportFiles(next, users, previous),
-      );
+      const w = syncStages(await externalizeReportFiles(next, users, previous));
 
       if (supabase) await enqueueWork(w);
       else await persistWork(w);
@@ -1389,18 +1121,18 @@ function App() {
   const totals = useMemo(() => {
     const groups = [
       ["Total de obras", () => true],
-      ["Em execução", (w: Work) => w.stages[6]?.status === "EM ANDAMENTO"],
-      ["Concluídas", (w: Work) => workStatus(w) === "CONCLUÍDO"],
+      ["Em execução", (w: Work) => executionStatus(w) === "EM ANDAMENTO"],
+      ["Concluídas", (w: Work) => executionStatus(w) === "CONCLUÍDO"],
       [
         "Carteira",
         (w: Work) =>
-          ["LIBERADO", "EM PLANEJAMENTO"].includes(w.stages[6]?.status),
+          ["LIBERADO", "EM PLANEJAMENTO"].includes(executionStatus(w)),
       ],
       [
         "Em liberação",
         (w: Work) =>
           ["CADASTRADO", "AGUARDANDO", "PARALISADO"].includes(
-            w.stages[6]?.status,
+            executionStatus(w),
           ),
       ],
     ] as const;
@@ -1424,7 +1156,7 @@ function App() {
           w,
           kind: "stages" as const,
           items: w.stages.filter(
-            (i, index) => index !== 3 && index !== 10 && !finished(i.status),
+            (i) => !isChecklist(i.name) && !finished(i.status),
           ),
         },
         {
@@ -1462,8 +1194,10 @@ function App() {
       ["Materiais", [4]],
       ["Obrasoft", [5]],
       ["Execução de obras", [6]],
+      ["LIG/PNG", [7]],
       ["Reposição", [8]],
       ["Testes", [9]],
+      ["Instalação de Equipamento", [10]],
     ];
 
     return mapping.map(([name, indices]) => ({
@@ -1484,13 +1218,14 @@ function App() {
           (!cardFilter ||
             cardFilter === "Total de obras" ||
             (cardFilter === "Em execução" &&
-              w.stages[6]?.status === "EM ANDAMENTO") ||
-            (cardFilter === "Concluídas" && workStatus(w) === "CONCLUÍDO") ||
+              executionStatus(w) === "EM ANDAMENTO") ||
+            (cardFilter === "Concluídas" &&
+              executionStatus(w) === "CONCLUÍDO") ||
             (cardFilter === "Carteira" &&
-              ["LIBERADO", "EM PLANEJAMENTO"].includes(w.stages[6]?.status)) ||
+              ["LIBERADO", "EM PLANEJAMENTO"].includes(executionStatus(w))) ||
             (cardFilter === "Em liberação" &&
               ["CADASTRADO", "AGUARDANDO", "PARALISADO"].includes(
-                w.stages[6]?.status,
+                executionStatus(w),
               ))),
       ),
     [works, filters, users, query, cardFilter],
@@ -1510,15 +1245,20 @@ function App() {
   const createWork = async () => {
     if (!pendingWork) return;
     const errors = validateWork(pendingWork);
-    if (errors.length) {setNewWorkError(errors.join(" ")); return;}
+    if (errors.length) {
+      setNewWorkError(errors.join(" "));
+      return;
+    }
     try {
-      await save({...pendingWork, dataValidated:true});
+      await save({ ...pendingWork, dataValidated: true });
       setSelected(pendingWork.id);
       setOpenBlocks(["croqui"]);
       setPendingWork(null);
       setNewWorkError("");
       navigate("obra");
-    } catch (e) {setNewWorkError(String(e));}
+    } catch (e) {
+      setNewWorkError(String(e));
+    }
   };
   const newObra = () => setPendingWork(newWork());
 
@@ -1574,10 +1314,7 @@ function App() {
         <div className="brand">
           <Building2 size={24} />
           <strong>GESTÃO DE OBRAS</strong>
-          <button
-            className="mobile-close"
-            onClick={() => setMobileNav(false)}
-          >
+          <button className="mobile-close" onClick={() => setMobileNav(false)}>
             <X />
           </button>
         </div>
@@ -1593,17 +1330,22 @@ function App() {
               {n.label}
             </button>
           ))}
+          <a
+            className="external-report-link"
+            href="https://engenhariaaltotiete-create.github.io/Relatorios_Padrao_4.0/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <FileText size={17} /> RELATÓRIOS PADRÃO{" "}
+            <ExternalLink size={14} aria-label="Sistema externo" />
+          </a>
         </nav>
 
         <div className="sidebar-footer">
-          <span className="avatar">
-            {user.name.slice(0, 2).toUpperCase()}
-          </span>
+          <span className="avatar">{user.name.slice(0, 2).toUpperCase()}</span>
           <div>
             <strong>{user.name}</strong>
-            <small>
-              {user.role === "admin" ? "Administrador" : "Usuário"}
-            </small>
+            <small>{user.role === "admin" ? "Administrador" : "Usuário"}</small>
           </div>
           <button onClick={logout} title="Sair">
             <LogOut size={17} />
@@ -1613,10 +1355,7 @@ function App() {
 
       <main className="main">
         <header className="topbar">
-          <button
-            className="hamburger"
-            onClick={() => setMobileNav(true)}
-          >
+          <button className="hamburger" onClick={() => setMobileNav(true)}>
             <Menu />
           </button>
           <span>
@@ -1654,7 +1393,6 @@ function App() {
                   : "Sincronizado"}{" "}
           · Dados: {syncState.pending} pendente(s) · Arquivos:{" "}
           {fileState.pending} pendente(s)
-
           {fileState.errors.length > 0 && (
             <details>
               <summary>Erros de arquivos</summary>
@@ -1666,7 +1404,6 @@ function App() {
               ))}
             </details>
           )}
-
           {syncState.errors > 0 && (
             <>
               {" "}
@@ -1698,6 +1435,7 @@ function App() {
               filters={filters}
               setFilters={setFilters}
               users={users}
+              works={works}
             />
             <Dashboard
               works={workRows}
@@ -1711,7 +1449,33 @@ function App() {
           </>
         )}
 
-        {pendingWork && <div className="report-modal" role="dialog" aria-modal="true" aria-label="Cadastrar nova obra"><div className="report-modal-content"><div className="report-modal-header"><h2>Nova obra — dados obrigatórios</h2><button onClick={()=>setPendingWork(null)}>Cancelar</button></div><WorkForm work={pendingWork} update={(patch)=>setPendingWork((current)=>current?{...current,...patch}:null)}/>{newWorkError && <p className="error">{newWorkError}</p>}<button className="primary" onClick={()=>void createWork()}>Criar obra</button></div></div>}
+        {pendingWork && (
+          <div
+            className="report-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cadastrar nova obra"
+          >
+            <div className="report-modal-content">
+              <div className="report-modal-header">
+                <h2>Nova obra — dados obrigatórios</h2>
+                <button onClick={() => setPendingWork(null)}>Cancelar</button>
+              </div>
+              <WorkForm
+                work={pendingWork}
+                update={(patch) =>
+                  setPendingWork((current) =>
+                    current ? { ...current, ...patch } : null,
+                  )
+                }
+              />
+              {newWorkError && <p className="error">{newWorkError}</p>}
+              <button className="primary" onClick={() => void createWork()}>
+                Criar obra
+              </button>
+            </div>
+          </div>
+        )}
         {page === "obras" && (
           <>
             <div className="page-heading">
@@ -1728,9 +1492,7 @@ function App() {
               {totals.map((t, i) => (
                 <button
                   key={t.name}
-                  className={
-                    "kpi " + (cardFilter === t.name ? "chosen" : "")
-                  }
+                  className={"kpi " + (cardFilter === t.name ? "chosen" : "")}
                   onClick={() =>
                     setCardFilter((v) => (v === t.name ? "" : t.name))
                   }
@@ -1755,6 +1517,7 @@ function App() {
               filters={filters}
               setFilters={setFilters}
               users={users}
+              works={works}
             />
 
             <div className="table-scroll">
@@ -1775,7 +1538,7 @@ function App() {
                     <th>Etapas</th>
                     <th>Check início</th>
                     <th>Check conclusão</th>
-                    <th>Situação</th>
+                    <th>Status Execução</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1818,8 +1581,8 @@ function App() {
                       </td>
                       <td>
                         <Pill
-                          status={workStatus(w)}
-                          end={w.stages[6]?.end}
+                          status={executionStatus(w)}
+                          end={executionStage(w)?.end}
                         />
                       </td>
                     </tr>
@@ -1829,8 +1592,8 @@ function App() {
             </div>
 
             <div className="list-bottom">
-              Exibindo {Math.min(visible, workRows.length)} de{" "}
-              {workRows.length} obras{" "}
+              Exibindo {Math.min(visible, workRows.length)} de {workRows.length}{" "}
+              obras{" "}
               {visible < workRows.length && (
                 <button onClick={() => setVisible((x) => x + 50)}>
                   Carregar mais 50
@@ -1875,8 +1638,7 @@ function App() {
                 )}{" "}
                 pendências sem responsável
               </strong>{" "}
-              — registros sem atribuição aparecem destacados em vermelho
-              claro.
+              — registros sem atribuição aparecem destacados em vermelho claro.
             </div>
 
             <FilterBar
@@ -1885,6 +1647,7 @@ function App() {
               filters={filters}
               setFilters={setFilters}
               users={users}
+              works={works}
             />
 
             {(["stages", "startDocs", "endDocs"] as const).map((kind) => (
@@ -1955,9 +1718,7 @@ function App() {
                               <td>
                                 {users.find((u) => u.id === i.responsible)
                                   ?.name || (
-                                  <b className="red-text">
-                                    Sem responsável
-                                  </b>
+                                  <b className="red-text">Sem responsável</b>
                                 )}
                               </td>
                               <td>
@@ -1994,18 +1755,15 @@ function App() {
           <>
             <div className="page-heading">
               <div>
-                <button
-                  className="back"
-                  onClick={() => navigate("obras")}
-                >
+                <button className="back" onClick={() => navigate("obras")}>
                   <ArrowLeft size={16} /> Voltar às obras
                 </button>
                 <h1>{current.address || "Nova obra"}</h1>
                 <p>
                   {current.city} · {current.service} ·{" "}
                   <Pill
-                    status={workStatus(current)}
-                    end={current.stages[6]?.end}
+                    status={executionStatus(current)}
+                    end={executionStage(current)?.end}
                   />
                 </p>
               </div>
@@ -2024,9 +1782,7 @@ function App() {
 
                     try {
                       await removeWork(current.id);
-                      setWorks((v) =>
-                        v.filter((w) => w.id !== current.id),
-                      );
+                      setWorks((v) => v.filter((w) => w.id !== current.id));
                       navigate("obras");
                     } catch (e) {
                       setError(String(e));
@@ -2103,77 +1859,78 @@ function App() {
                 {openBlocks.includes(b.id) && (
                   <div className="accordion-body">
                     {b.id === "fotos" ? (
-                      <PhotoReportsBlock work={current} users={users} admin={user.role === "admin"} save={(w)=>save(w,current)} />
-                    ) : <EditableBlock
-                      key={current.id + ":" + b.id}
-                      owner={user.id}
-                      work={current}
-                      id={b.id}
-                      save={(w) => save(w, current)}
-                    >
-                      {(draft, change, editing) => (
-                        <>
-                          {b.id === "dados" && (
-                            <WorkForm work={draft} update={change} />
-                          )}
+                      <PhotoReportsBlock
+                        work={current}
+                        users={users}
+                        admin={user.role === "admin"}
+                        save={(w) => save(w, current)}
+                      />
+                    ) : (
+                      <EditableBlock
+                        key={current.id + ":" + b.id}
+                        owner={user.id}
+                        work={current}
+                        id={b.id}
+                        save={(w) => save(w, current)}
+                      >
+                        {(draft, change, editing) => (
+                          <>
+                            {b.id === "dados" && (
+                              <WorkForm work={draft} update={change} />
+                            )}
 
-                          {b.id === "croqui" && (
-                            <MapEditor
-                              work={draft}
-                              readOnly={!editing}
-                              onChange={(w) => change(w)}
-                            />
-                          )}
+                            {b.id === "croqui" && (
+                              <MapEditor
+                                work={draft}
+                                readOnly={!editing}
+                                onChange={(w) => change(w)}
+                              />
+                            )}
 
-                          {b.id === "orcamento" && (
-                            <Budget work={draft} update={change} />
-                          )}
+                            {b.id === "orcamento" && (
+                              <Budget work={draft} update={change} />
+                            )}
 
-                          {["etapas", "inicio", "conclusao"].includes(
-                            b.id,
-                          ) && (
-                            <ItemTable
-                              readOnly={!editing}
-                              work={draft}
-                              kind={
-                                b.id === "etapas"
-                                  ? "stages"
-                                  : b.id === "inicio"
-                                    ? "startDocs"
-                                    : "endDocs"
-                              }
-                              users={users}
-                              change={(kind, id, p) =>
-                                change({
-                                  [kind]: draft[kind].map((i) =>
-                                    i.id === id
-                                      ? {
-                                          ...i,
-                                          ...p,
-                                          statusAt:
-                                            p.status &&
-                                            p.status !== i.status
-                                              ? new Date().toISOString()
-                                              : i.statusAt,
-                                        }
-                                      : i,
-                                  ),
-                                })
-                              }
-                            />
-                          )}
+                            {["etapas", "inicio", "conclusao"].includes(
+                              b.id,
+                            ) && (
+                              <ItemTable
+                                readOnly={!editing}
+                                work={draft}
+                                kind={
+                                  b.id === "etapas"
+                                    ? "stages"
+                                    : b.id === "inicio"
+                                      ? "startDocs"
+                                      : "endDocs"
+                                }
+                                users={users}
+                                change={(kind, id, p) =>
+                                  change({
+                                    [kind]: draft[kind].map((i) =>
+                                      i.id === id
+                                        ? {
+                                            ...i,
+                                            ...p,
+                                            statusAt:
+                                              p.status && p.status !== i.status
+                                                ? new Date().toISOString()
+                                                : i.statusAt,
+                                          }
+                                        : i,
+                                    ),
+                                  })
+                                }
+                              />
+                            )}
 
-                          {b.id === "cronograma" && (
-                            <WorkSchedule
-                              work={draft}
-                              users={users}
-                            />
-                          )}
-
-
-                        </>
-                      )}
-                    </EditableBlock>}
+                            {b.id === "cronograma" && (
+                              <WorkSchedule work={draft} users={users} />
+                            )}
+                          </>
+                        )}
+                      </EditableBlock>
+                    )}
                   </div>
                 )}
               </section>
@@ -2182,10 +1939,7 @@ function App() {
         )}
 
         {page === "usuarios" && user.role === "admin" && (
-          <UserAdmin
-            users={users}
-            refresh={() => loadUsers().then(setUsers)}
-          />
+          <UserAdmin users={users} refresh={() => loadUsers().then(setUsers)} />
         )}
 
         {page === "auditoria" && (
@@ -2198,8 +1952,8 @@ function App() {
             </div>
 
             <p className="hint">
-              Histórico de alterações. Em produção, a trilha é gravada
-              pelo banco de dados.
+              Histórico de alterações. Em produção, a trilha é gravada pelo
+              banco de dados.
             </p>
 
             <div className="table-scroll">
@@ -2217,12 +1971,9 @@ function App() {
                 <tbody>
                   {audit.map((a) => (
                     <tr key={a.id}>
+                      <td>{new Date(a.at).toLocaleString("pt-BR")}</td>
                       <td>
-                        {new Date(a.at).toLocaleString("pt-BR")}
-                      </td>
-                      <td>
-                        {users.find((u) => u.id === a.actor)?.name ||
-                          a.actor}
+                        {users.find((u) => u.id === a.actor)?.name || a.actor}
                       </td>
                       <td>{a.workId.slice(0, 8)}</td>
                       <td>{a.entity}</td>
@@ -2230,7 +1981,10 @@ function App() {
                       <td>
                         <details>
                           <summary>Ver alterações</summary>
-                          <pre>{a.after.slice(0, 3000)}</pre>
+                          <p>Anterior:</p>
+                          <pre>{a.before}</pre>
+                          <p>Novo:</p>
+                          <pre>{a.after}</pre>
                         </details>
                       </td>
                     </tr>
@@ -2245,25 +1999,15 @@ function App() {
       {editItem &&
         (() => {
           const w = works.find((x) => x.id === editItem.workId);
-          const i = w?.[editItem.kind].find(
-            (x) => x.id === editItem.id,
-          );
+          const i = w?.[editItem.kind].find((x) => x.id === editItem.id);
 
           if (!w || !i) return null;
 
-          const auto =
-            editItem.kind === "stages" &&
-            (i.name === STAGES[3] || i.name === STAGES[10]);
+          const auto = editItem.kind === "stages" && isChecklist(i.name);
 
           return (
-            <div
-              className="modal-backdrop"
-              onClick={() => setEditItem(null)}
-            >
-              <div
-                className="modal"
-                onClick={(e) => e.stopPropagation()}
-              >
+            <div className="modal-backdrop" onClick={() => setEditItem(null)}>
+              <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal-header">
                   <h2>{i.name}</h2>
                   <button onClick={() => setEditItem(null)}>
@@ -2293,10 +2037,7 @@ function App() {
                           ? STAGE_STATUS
                           : DOC_STATUS
                         ).map((s) => (
-                          <option
-                            disabled={s === "CADASTRADO"}
-                            key={s}
-                          >
+                          <option disabled={s === "CADASTRADO"} key={s}>
                             {s}
                           </option>
                         ))}
@@ -2359,10 +2100,7 @@ function App() {
                 </div>
 
                 <div className="right">
-                  <button
-                    className="primary"
-                    onClick={() => setEditItem(null)}
-                  >
+                  <button className="primary" onClick={() => setEditItem(null)}>
                     <Check size={15} /> Concluir
                   </button>
                 </div>

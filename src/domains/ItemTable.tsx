@@ -1,5 +1,5 @@
 import {
-  STAGES,
+  isChecklist,
   STAGE_STATUS,
   DOC_STATUS,
   statusColor,
@@ -10,36 +10,21 @@ import {
 
 import ResponsibleSelect from "./ResponsibleSelect";
 
-import {
-  enqueueFile,
-  getFile,
-} from "./files";
+import { enqueueFile, getFile } from "./files";
 
-type ItemKind =
-  | "stages"
-  | "startDocs"
-  | "endDocs";
+type ItemKind = "stages" | "startDocs" | "endDocs";
 
 type Props = {
   work: Work;
   kind: ItemKind;
   users: User[];
-  change: (
-    kind: ItemKind,
-    id: string,
-    patch: Partial<Item>,
-  ) => void;
+  change: (kind: ItemKind, id: string, patch: Partial<Item>) => void;
   readOnly?: boolean;
 };
 
-const displayDate = (
-  value: string,
-) =>
+const displayDate = (value: string) =>
   value
-    ? new Date(
-        value.slice(0, 10) +
-          "T12:00:00",
-      ).toLocaleDateString("pt-BR")
+    ? new Date(value.slice(0, 10) + "T12:00:00").toLocaleDateString("pt-BR")
     : "—";
 
 export default function ItemTable({
@@ -54,11 +39,7 @@ export default function ItemTable({
       <table className="items-table">
         <thead>
           <tr>
-            <th>
-              {kind === "stages"
-                ? "Etapa"
-                : "Documento"}
-            </th>
+            <th>{kind === "stages" ? "Etapa" : "Documento"}</th>
             <th>Status</th>
             <th>Responsável</th>
             <th>Data Status</th>
@@ -70,294 +51,187 @@ export default function ItemTable({
         </thead>
 
         <tbody>
-          {work[kind].map(
-            (item, index) => {
-              const automatic =
-                kind === "stages" &&
-                (
-                  item.name === STAGES[3] ||
-                  item.name === STAGES[10]
-                );
+          {work[kind].map((item, index) => {
+            const automatic = kind === "stages" && isChecklist(item.name);
 
-              return (
-                <tr
-                  key={item.id}
-                  className={
-                    statusColor(
-                      item.status,
-                      item.end,
-                    ) === "red"
-                      ? "overdue-row"
-                      : ""
-                  }
-                >
-                  <td>
-                    <strong>
-                      {item.name}
-                    </strong>
+            return (
+              <tr
+                key={item.id}
+                className={
+                  statusColor(item.status, item.end) === "red"
+                    ? "overdue-row"
+                    : ""
+                }
+              >
+                <td>
+                  <strong>{item.name}</strong>
 
-                    {item.guidance && (
-                      <small className="guidance">
-                        {item.guidance}
-                      </small>
-                    )}
-                  </td>
+                  {item.guidance && (
+                    <small className="guidance">{item.guidance}</small>
+                  )}
+                </td>
 
-                  <td>
-                    {automatic || readOnly ? (
-                      <span
-                        className={
-                          "pill " +
-                          statusColor(
-                            item.status,
-                            item.end,
-                          )
-                        }
-                      >
-                        {item.status}
-                      </span>
-                    ) : (
-                      <select
-                        value={item.status}
-                        className={
-                          "status-select " +
-                          statusColor(
-                            item.status,
-                            item.end,
-                          )
-                        }
-                        onChange={(event) =>
-                          change(
-                            kind,
-                            item.id,
-                            {
-                              status:
-                                event.target.value,
-                            },
-                          )
-                        }
-                      >
-                        {(
-                          kind === "stages"
-                            ? STAGE_STATUS
-                            : DOC_STATUS
-                        ).map(
-                          (status) => (
-                            <option
-                              key={status}
-                              disabled={
-                                status ===
-                                "CADASTRADO"
-                              }
-                            >
-                              {status}
-                            </option>
-                          ),
-                        )}
-                      </select>
-                    )}
-                  </td>
-
-                  <td>
-                    <ResponsibleSelect
-                      users={users}
-                      value={
-                        item.responsible
+                <td>
+                  {automatic || readOnly ? (
+                    <span
+                      className={"pill " + statusColor(item.status, item.end)}
+                    >
+                      {item.status}
+                    </span>
+                  ) : (
+                    <select
+                      value={item.status}
+                      className={
+                        "status-select " + statusColor(item.status, item.end)
                       }
-                      disabled={readOnly}
-                      onChange={(
-                        responsible,
-                      ) =>
-                        change(
-                          kind,
-                          item.id,
-                          { responsible },
-                        )
-                      }
-                    />
-                  </td>
-
-                  <td>
-                    {displayDate(
-                      item.statusAt,
-                    )}
-                  </td>
-
-                  <td>
-                    <input
-                      type="date"
-                      disabled={
-                        automatic ||
-                        readOnly
-                      }
-                      value={item.start}
                       onChange={(event) =>
-                        change(
-                          kind,
-                          item.id,
-                          {
-                            start:
-                              event.target.value,
-                          },
-                        )
+                        change(kind, item.id, {
+                          status: event.target.value,
+                        })
                       }
-                    />
-                  </td>
+                    >
+                      {(kind === "stages" ? STAGE_STATUS : DOC_STATUS).map(
+                        (status) => (
+                          <option
+                            key={status}
+                            disabled={status === "CADASTRADO"}
+                          >
+                            {status}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  )}
+                </td>
 
-                  <td>
-                    <input
-                      type="date"
-                      disabled={
-                        automatic ||
-                        readOnly
-                      }
-                      value={item.end}
-                      onChange={(event) =>
-                        change(
-                          kind,
-                          item.id,
-                          {
-                            end:
-                              event.target.value,
-                          },
-                        )
-                      }
-                    />
-                  </td>
+                <td>
+                  <ResponsibleSelect
+                    users={users}
+                    value={item.responsible}
+                    disabled={readOnly}
+                    onChange={(responsible) =>
+                      change(kind, item.id, { responsible })
+                    }
+                  />
+                </td>
 
-                  <td>
-                    <textarea
-                      readOnly={readOnly}
-                      rows={3}
-                      value={item.note}
-                      onChange={(event) =>
-                        change(
-                          kind,
-                          item.id,
-                          {
-                            note:
-                              event.target.value,
-                          },
-                        )
-                      }
-                    />
-                  </td>
+                <td>{displayDate(item.statusAt)}</td>
 
-                  <td>
-                    {item.attachments?.map(
-                      (file) => (
-                        <button
-                          key={file.id}
-                          onClick={async () => {
-                            try {
-                              const blob =
-                                await getFile(
-                                  file.id,
-                                );
+                <td>
+                  <input
+                    type="date"
+                    disabled={automatic || readOnly}
+                    value={item.start}
+                    onChange={(event) =>
+                      change(kind, item.id, {
+                        start: event.target.value,
+                      })
+                    }
+                  />
+                </td>
 
-                              const link =
-                                document.createElement(
-                                  "a",
-                                );
+                <td>
+                  <input
+                    type="date"
+                    disabled={automatic || readOnly}
+                    value={item.end}
+                    onChange={(event) =>
+                      change(kind, item.id, {
+                        end: event.target.value,
+                      })
+                    }
+                  />
+                </td>
 
-                              link.href =
-                                URL.createObjectURL(
-                                  blob,
-                                );
+                <td>
+                  <textarea
+                    readOnly={readOnly}
+                    rows={3}
+                    value={item.note}
+                    onChange={(event) =>
+                      change(kind, item.id, {
+                        note: event.target.value,
+                      })
+                    }
+                  />
+                </td>
 
-                              link.download =
-                                file.name;
+                <td>
+                  {item.attachments?.map((file) => (
+                    <button
+                      key={file.id}
+                      onClick={async () => {
+                        try {
+                          const blob = await getFile(file.id);
 
-                              link.click();
+                          const link = document.createElement("a");
 
-                              setTimeout(
-                                () =>
-                                  URL.revokeObjectURL(
-                                    link.href,
-                                  ),
-                                1000,
-                              );
-                            } catch (error) {
-                              alert(
-                                String(error),
-                              );
-                            }
-                          }}
-                        >
-                          {file.name}
-                        </button>
-                      ),
-                    )}
+                          link.href = URL.createObjectURL(blob);
 
-                    {!readOnly && (
-                      <label className="upload">
-                        Adicionar arquivo
+                          link.download = file.name;
 
-                        <input
-                          type="file"
-                          hidden
-                          onChange={async (
-                            event,
-                          ) => {
-                            const file =
-                              event.target
-                                .files?.[0];
+                          link.click();
 
-                            if (!file) {
-                              return;
-                            }
+                          setTimeout(
+                            () => URL.revokeObjectURL(link.href),
+                            1000,
+                          );
+                        } catch (error) {
+                          alert(String(error));
+                        }
+                      }}
+                    >
+                      {file.name}
+                    </button>
+                  ))}
 
-                            try {
-                              const id =
-                                await enqueueFile(
-                                  work.id,
-                                  item.id,
-                                  "document",
-                                  file,
-                                );
+                  {!readOnly && (
+                    <label className="upload">
+                      Adicionar arquivo
+                      <input
+                        type="file"
+                        hidden
+                        onChange={async (event) => {
+                          const file = event.target.files?.[0];
 
-                              change(
-                                kind,
-                                item.id,
+                          if (!file) {
+                            return;
+                          }
+
+                          try {
+                            const id = await enqueueFile(
+                              work.id,
+                              item.id,
+                              "document",
+                              file,
+                            );
+
+                            change(kind, item.id, {
+                              attachments: [
+                                ...(item.attachments || []),
                                 {
-                                  attachments: [
-                                    ...(
-                                      item.attachments ||
-                                      []
-                                    ),
-                                    {
-                                      id,
-                                      name:
-                                        file.name,
-                                      mime:
-                                        file.type,
-                                      size:
-                                        file.size,
-                                    },
-                                  ],
+                                  id,
+                                  name: file.name,
+                                  mime: file.type,
+                                  size: file.size,
                                 },
-                              );
-                            } catch (error) {
-                              alert(
-                                String(error),
-                              );
-                            }
+                              ],
+                            });
+                          } catch (error) {
+                            alert(String(error));
+                          }
 
-                            event.target.value =
-                              "";
-                          }}
-                        />
-                      </label>
-                    )}
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                  )}
 
-                    <small>
-                      {index + 1}
-                    </small>
-                  </td>
-                </tr>
-              );
-            },
-          )}
+                  <small>{index + 1}</small>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

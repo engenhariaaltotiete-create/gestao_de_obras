@@ -1,9 +1,4 @@
-import {
-  authorize,
-  cors,
-  json,
-  failure,
-} from "../_shared/auth.ts";
+import { authorize, cors, json, failure } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -31,10 +26,7 @@ Deno.serve(async (req) => {
       throw new Error("Dados inválidos");
     }
 
-    if (
-      id === user.id &&
-      (role !== "admin" || !active)
-    ) {
+    if (id === user.id && (role !== "admin" || !active)) {
       throw new Error(
         "Não desative ou remova seu próprio perfil administrativo",
       );
@@ -43,14 +35,13 @@ Deno.serve(async (req) => {
     let target = id;
 
     if (!id) {
-      const { data, error } =
-        await privileged.auth.admin.inviteUserByEmail(
-          email,
-          {
-            data: { name },
-            redirectTo: Deno.env.get("APP_URL"),
-          },
-        );
+      const { data, error } = await privileged.auth.admin.inviteUserByEmail(
+        email,
+        {
+          data: { name },
+          redirectTo: Deno.env.get("APP_URL"),
+        },
+      );
 
       if (error) throw error;
 
@@ -67,11 +58,7 @@ Deno.serve(async (req) => {
       throw new Error("Perfil não encontrado");
     }
 
-    if (
-      old.role === "admin" &&
-      old.active &&
-      (role !== "admin" || !active)
-    ) {
+    if (old.role === "admin" && old.active && (role !== "admin" || !active)) {
       const { count } = await privileged
         .from("profiles")
         .select("id", {
@@ -82,32 +69,34 @@ Deno.serve(async (req) => {
         .eq("active", true);
 
       if ((count || 0) <= 1) {
-        throw new Error(
-          "É necessário manter um administrador ativo",
-        );
+        throw new Error("É necessário manter um administrador ativo");
       }
     }
 
-    const { error } = await privileged.rpc(
-      "admin_update_profile",
-      {
-        p_id: target,
-        p_name: name.trim(),
-        p_role: role,
-        p_active: active,
-        p_actor: user.id,
-      },
-    );
+    const { error } = await privileged.rpc("admin_update_profile", {
+      p_id: target,
+      p_name: name.trim(),
+      p_role: role,
+      p_active: active,
+      p_actor: user.id,
+    });
 
     if (error) throw error;
 
-    const { error: banError } =
-      await privileged.auth.admin.updateUserById(
-        target,
-        {
-          ban_duration: active ? "none" : "876000h",
-        },
+    if (!id) {
+      const { error: auditError } = await privileged.rpc(
+        "admin_audit_invitation",
+        { p_id: target, p_actor: user.id },
       );
+      if (auditError) throw auditError;
+    }
+
+    const { error: banError } = await privileged.auth.admin.updateUserById(
+      target,
+      {
+        ban_duration: active ? "none" : "876000h",
+      },
+    );
 
     if (banError) throw banError;
 

@@ -1,6 +1,4 @@
-import type {
-  PhotoReport as ReferencePhotoReport,
-} from "./reference/types";
+import type { PhotoReport as ReferencePhotoReport } from "./reference/types";
 
 export const STAGES = [
   "Diagnóstico",
@@ -10,9 +8,10 @@ export const STAGES = [
   "Materiais",
   "Obrasoft",
   "Execução de Obra",
-  "Instalação de Equipamento",
+  "LIG/PNG",
   "Reposição",
   "Testes",
+  "Instalação de Equipamento",
   "Checklist de Conclusão de Obra",
 ] as const;
 
@@ -25,10 +24,7 @@ export const INITIAL_DOCS: [string, string][] = [
     "Sentença judicial",
     "Sentença expedida pelo Judiciário ordenando a execução da obra.",
   ],
-  [
-    "Diagnóstico",
-    "Exigido para obras de melhoria do sistema.",
-  ],
+  ["Diagnóstico", "Exigido para obras de melhoria do sistema."],
   [
     "Projeto / Levantamento – Aprovado pela Sabesp",
     "Deve contemplar todas as interferências existentes no local e escavações.",
@@ -41,42 +37,24 @@ export const INITIAL_DOCS: [string, string][] = [
     "Checklist COMGÁS",
     "Obrigatório quando houver redes da COMGÁS na área da obra (NTS 324 e 400).",
   ],
-  [
-    "Autorização Ambiental",
-    "Necessária apenas quando aplicável.",
-  ],
-  [
-    "Autorização de Concessionárias",
-    "DER, MRS, Transpetro, entre outras.",
-  ],
+  ["Autorização Ambiental", "Necessária apenas quando aplicável."],
+  ["Autorização de Concessionárias", "DER, MRS, Transpetro, entre outras."],
   [
     "Autorização da Secretaria de Obras",
     "Exigida somente no município de Suzano.",
   ],
-  [
-    "Autorização da Secretaria de Trânsito",
-    "Obrigatória para todas as obras.",
-  ],
+  ["Autorização da Secretaria de Trânsito", "Obrigatória para todas as obras."],
   [
     "Autorização da Prefeitura para Atendimento de Área Irregular",
     "Necessário para o atendimento de áreas irregulares.",
   ],
-  [
-    "Relatório Fotográfico Inicial",
-    "Obrigatório para todas as obras.",
-  ],
-  [
-    "Plano de Sinalização Específico",
-    "Conforme exigências do trânsito local.",
-  ],
+  ["Relatório Fotográfico Inicial", "Obrigatório para todas as obras."],
+  ["Plano de Sinalização Específico", "Conforme exigências do trânsito local."],
   [
     "Plano de Comunicação",
     "Plano informando a forma de realização da comunicação.",
   ],
-  [
-    "Plano de Contingência",
-    "Conforme NTS 0324 e 0392.",
-  ],
+  ["Plano de Contingência", "Conforme NTS 0324 e 0392."],
   [
     "Plano de Furo Aprovado pela Sabesp",
     "Deve conter levantamento de interferências conforme NTS 0324.",
@@ -85,29 +63,17 @@ export const INITIAL_DOCS: [string, string][] = [
     "Relatório de Sondagens / Cavas-Testemunho",
     "Conforme requisitos da NTS 0324 e da NBR 17015.",
   ],
-  [
-    "APR",
-    "Conforme NTS 0324 e 0392.",
-  ],
-  [
-    "PAE",
-    "Conforme NTS 0324 e 0392.",
-  ],
+  ["APR", "Conforme NTS 0324 e 0392."],
+  ["PAE", "Conforme NTS 0324 e 0392."],
 ];
 
 export const FINAL_DOCS: [string, string][] = [
-  [
-    "Checklist de liberação de obra",
-    "Exigido para início de todas as obras.",
-  ],
+  ["Checklist de liberação de obra", "Exigido para início de todas as obras."],
   [
     "Relatórios de fiscalização de obra",
     "Controle da contratada contendo todas as etapas.",
   ],
-  [
-    "Teste de estanqueidade",
-    "Somente para as obras de água.",
-  ],
+  ["Teste de estanqueidade", "Somente para as obras de água."],
   [
     "Relatório de serviços não vinculados",
     "Quando houver serviços não vinculados.",
@@ -120,10 +86,7 @@ export const FINAL_DOCS: [string, string][] = [
     "Registro de execução do furo",
     "Obrigatório em obras em HDD, devendo conter: profundidade por haste, pitch (ângulo) por haste, sequência de alargamento e controle da carga de puxamento.",
   ],
-  [
-    "Relatório de ocorrências e desvios",
-    "Obrigatório em obras em HDD.",
-  ],
+  ["Relatório de ocorrências e desvios", "Obrigatório em obras em HDD."],
 ];
 
 export const STAGE_STATUS = [
@@ -172,11 +135,7 @@ export const SERVICOS = [
   "Instalação de equipamento",
 ];
 
-export const OBJETIVOS = [
-  "Universalização",
-  "Melhoria",
-  "Empreendimento",
-];
+export const OBJETIVOS = ["Universalização", "Melhoria", "Empreendimento"];
 
 export const PAVIMENTOS = [
   "Terra",
@@ -187,8 +146,7 @@ export const PAVIMENTOS = [
 ];
 
 export type Status =
-  | (typeof STAGE_STATUS)[number]
-  | (typeof SEG_STATUS)[number];
+  (typeof STAGE_STATUS)[number] | (typeof SEG_STATUS)[number];
 
 export type Item = {
   attachments?: {
@@ -328,10 +286,7 @@ export const dateToday = () =>
   "-" +
   String(new Date().getDate()).padStart(2, "0");
 
-export const newItem = (
-  name: string,
-  guidance = "",
-): Item => ({
+export const newItem = (name: string, guidance = ""): Item => ({
   id: uid(),
   name,
   guidance,
@@ -366,12 +321,8 @@ export function newWork(): Work {
     manualLength: null,
     pavements: [],
     stages: STAGES.map((s) => newItem(s)),
-    startDocs: INITIAL_DOCS.map(
-      ([name, guidance]) => newItem(name, guidance),
-    ),
-    endDocs: FINAL_DOCS.map(
-      ([name, guidance]) => newItem(name, guidance),
-    ),
+    startDocs: INITIAL_DOCS.map(([name, guidance]) => newItem(name, guidance)),
+    endDocs: FINAL_DOCS.map(([name, guidance]) => newItem(name, guidance)),
     points: [],
     lines: [],
     segments: [],
@@ -384,25 +335,16 @@ export const eligible = (status: string) =>
   !["CANCELADO", "NÃO SE APLICA"].includes(status);
 
 export const finished = (status: string) =>
-  [
-    "CONCLUÍDO",
-    "CANCELADO",
-    "NÃO SE APLICA",
-  ].includes(status);
+  ["CONCLUÍDO", "CANCELADO", "NÃO SE APLICA"].includes(status);
 
 export function progress(items: Item[]) {
-  const eligibleItems = items.filter(
-    (item) => eligible(item.status),
-  );
+  const eligibleItems = items.filter((item) => eligible(item.status));
 
   return eligibleItems.length
     ? Math.round(
-        (
-          100 *
-          eligibleItems.filter(
-            (item) => item.status === "CONCLUÍDO",
-          ).length
-        ) / eligibleItems.length,
+        (100 *
+          eligibleItems.filter((item) => item.status === "CONCLUÍDO").length) /
+          eligibleItems.length,
       )
     : null;
 }
@@ -410,65 +352,40 @@ export function progress(items: Item[]) {
 export const segLength = (segment: Segment) =>
   Math.max(
     0,
-    Number.isFinite(
-      segment.manual ?? segment.calculated,
-    )
-      ? segment.manual ?? segment.calculated
+    Number.isFinite(segment.manual ?? segment.calculated)
+      ? (segment.manual ?? segment.calculated)
       : 0,
   );
 
 export const calculatedLength = (work: Work) =>
   work.segments
-    .filter(
-      (segment) => segment.status !== "CANCELADO",
-    )
-    .reduce(
-      (sum, segment) => sum + segLength(segment),
-      0,
-    );
+    .filter((segment) => segment.status !== "CANCELADO")
+    .reduce((sum, segment) => sum + segLength(segment), 0);
 
-export const effectiveLength = (work: Work) =>
-  calculatedLength(work);
+export const effectiveLength = (work: Work) => calculatedLength(work);
 
 export const executedLength = (work: Work) =>
   work.segments
-    .filter(
-      (segment) => segment.status === "CONCLUÍDO",
-    )
-    .reduce(
-      (sum, segment) => sum + segLength(segment),
-      0,
-    );
+    .filter((segment) => segment.status === "CONCLUÍDO")
+    .reduce((sum, segment) => sum + segLength(segment), 0);
 
 export const executionPercent = (work: Work) =>
   effectiveLength(work) > 0
-    ? (
-        100 * executedLength(work)
-      ) / effectiveLength(work)
+    ? (100 * executedLength(work)) / effectiveLength(work)
     : 0;
 
 export const budgetTotal = (work: Work) =>
-  work.budget.reduce(
-    (sum, row) =>
-      sum + row.quantity * row.unitPrice,
-    0,
-  );
+  work.budget.reduce((sum, row) => sum + row.quantity * row.unitPrice, 0);
 
 export function computedDocStage(docs: Item[]) {
-  if (
-    docs.every((doc) => finished(doc.status))
-  ) {
+  if (docs.every((doc) => finished(doc.status))) {
     return "CONCLUÍDO";
   }
 
   if (
     docs.some(
       (doc) =>
-        ![
-          "CADASTRADO",
-          "CANCELADO",
-          "NÃO SE APLICA",
-        ].includes(doc.status),
+        !["CADASTRADO", "CANCELADO", "NÃO SE APLICA"].includes(doc.status),
     )
   ) {
     return "EM ANDAMENTO";
@@ -478,19 +395,26 @@ export function computedDocStage(docs: Item[]) {
 }
 
 export function syncStages(work: Work): Work {
-  const stages = work.stages.map((stage, index) => {
-    if (index !== 3 && index !== 10) {
+  // Match by name so older payloads keep IDs, dates, attachments and responsibilities.
+  const canonical = STAGES.map(
+    (name) =>
+      work.stages.find((stage) => stage.name === name) || {
+        ...newItem(name),
+        id: work.id + ":" + name,
+        statusAt: work.createdAt,
+      },
+  );
+  const stages = canonical.map((stage) => {
+    if (!isChecklist(stage.name)) {
       return stage;
     }
 
     const docs =
-      index === 3
+      stage.name === "Checklist de Início de Obra"
         ? work.startDocs
         : work.endDocs;
 
-    const active = docs.filter(
-      (doc) => eligible(doc.status),
-    );
+    const active = docs.filter((doc) => eligible(doc.status));
 
     const starts = active
       .map((doc) => doc.start)
@@ -508,9 +432,7 @@ export function syncStages(work: Work): Work {
       ...stage,
       status,
       statusAt:
-        status === stage.status
-          ? stage.statusAt
-          : new Date().toISOString(),
+        status === stage.status ? stage.statusAt : new Date().toISOString(),
       start: starts[0] || "",
       end: ends.at(-1) || "",
     };
@@ -522,61 +444,42 @@ export function syncStages(work: Work): Work {
   };
 }
 
-export const workStatus = (work: Work) =>
-  work.stages[6]?.status === "CANCELADO"
-    ? "CANCELADO"
-    : work.stages.every(
-        (stage) => finished(stage.status),
-      )
-      ? "CONCLUÍDO"
-      : work.stages[6]?.status || "CADASTRADO";
+export const isChecklist = (name: string) =>
+  name === "Checklist de Início de Obra" ||
+  name === "Checklist de Conclusão de Obra";
 
-export const overdue = (
-  status: string,
-  end: string,
-) =>
-  !!end &&
-  end < dateToday() &&
-  !finished(status);
+export const executionStage = (work: Work) =>
+  work.stages.find((stage) => stage.name === "Execução de Obra");
 
-export const statusColor = (
-  status: string,
-  end = "",
-) =>
+export const executionStatus = (work: Work) =>
+  executionStage(work)?.status || "CADASTRADO";
+
+export const overdue = (status: string, end: string) =>
+  !!end && end < dateToday() && !finished(status);
+
+export const statusColor = (status: string, end = "") =>
   overdue(status, end)
     ? "red"
     : status === "CONCLUÍDO"
       ? "green"
       : status === "PARALISADO"
         ? "red"
-        : [
-            "CANCELADO",
-            "NÃO SE APLICA",
-          ].includes(status)
+        : ["CANCELADO", "NÃO SE APLICA"].includes(status)
           ? "gray"
-          : [
-              "CADASTRADO",
-              "AGUARDANDO",
-            ].includes(status)
+          : ["CADASTRADO", "AGUARDANDO"].includes(status)
             ? "yellow"
             : "blue";
 
 export const money = (value: number) =>
-  new Intl.NumberFormat(
-    "pt-BR",
-    {
-      style: "currency",
-      currency: "BRL",
-    },
-  ).format(value);
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
 
 export const meters = (value: number) =>
-  new Intl.NumberFormat(
-    "pt-BR",
-    {
-      maximumFractionDigits: 0,
-    },
-  ).format(Math.round(value));
+  new Intl.NumberFormat("pt-BR", {
+    maximumFractionDigits: 0,
+  }).format(Math.round(value));
 
 export const normalize = (value: string) =>
   String(value || "")
@@ -584,10 +487,7 @@ export const normalize = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-export function distance(
-  a: Point,
-  b: Point,
-) {
+export function distance(a: Point, b: Point) {
   const rad = Math.PI / 180;
   const radius = 6371000;
 
@@ -596,11 +496,7 @@ export function distance(
 
   const q =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(a.lat * rad) *
-      Math.cos(b.lat * rad) *
-      Math.sin(dLng / 2) ** 2;
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
 
-  return Math.round(
-    2 * radius * Math.asin(Math.sqrt(q)),
-  );
+  return Math.round(2 * radius * Math.asin(Math.sqrt(q)));
 }

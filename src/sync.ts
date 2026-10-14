@@ -6,7 +6,7 @@ import {
   isConfirmed,
 } from "./domains/syncPolicy.ts";
 
-import type { Work } from "./model";
+import { syncStages, type Work } from "./model";
 
 export type Pending = {
   id: string;
@@ -35,10 +35,7 @@ export type SyncState = {
 
 export type SyncTransport = {
   currentUser: () => Promise<string | null>;
-  save: (
-    work: Work,
-    revision: number | null,
-  ) => Promise<unknown>;
+  save: (work: Work, revision: number | null) => Promise<unknown>;
 };
 
 let transport: SyncTransport | null = supabase
@@ -52,16 +49,12 @@ let transport: SyncTransport | null = supabase
       },
 
       save: async (work, revision) => {
-        const { data, error } =
-          await supabase!.rpc(
-            "save_work_if_revision",
-            {
-              p_id: work.id,
-              p_created_at: work.createdAt,
-              p_payload: work,
-              p_expected_revision: revision,
-            },
-          );
+        const { data, error } = await supabase!.rpc("save_work_if_revision", {
+          p_id: work.id,
+          p_created_at: work.createdAt,
+          p_payload: work,
+          p_expected_revision: revision,
+        });
 
         if (error) {
           throw error;
@@ -72,21 +65,16 @@ let transport: SyncTransport | null = supabase
     }
   : null;
 
-export function configureSyncTransport(
-  value: SyncTransport | null,
-) {
+export function configureSyncTransport(value: SyncTransport | null) {
   transport = value;
 }
 
-let dbPromise:
-  Promise<IDBDatabase> | undefined;
+let dbPromise: Promise<IDBDatabase> | undefined;
 
 let owner = "";
 let syncing = false;
 
-const listeners = new Set<
-  (state: SyncState) => void
->();
+const listeners = new Set<(state: SyncState) => void>();
 
 const state: SyncState = {
   pending: 0,
@@ -106,100 +94,60 @@ export function configureSync(id: string) {
 
 const db = () => {
   if (!owner) {
-    return Promise.reject(
-      new Error("Sessão não verificada"),
-    );
+    return Promise.reject(new Error("Sessão não verificada"));
   }
 
-  return (
-    dbPromise ??= new Promise<IDBDatabase>(
-      (resolve, reject) => {
-        const request = indexedDB.open(
-          "sgo-offline-v3-" + owner,
-          1,
-        );
+  return (dbPromise ??= new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open("sgo-offline-v3-" + owner, 1);
 
-        request.onupgradeneeded = () => {
-          request.result.createObjectStore(
-            "works",
-            { keyPath: "id" },
-          );
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore("works", { keyPath: "id" });
 
-          request.result.createObjectStore(
-            "queue",
-            { keyPath: "id" },
-          );
-        };
+      request.result.createObjectStore("queue", { keyPath: "id" });
+    };
 
-        request.onsuccess = () =>
-          resolve(request.result);
+    request.onsuccess = () => resolve(request.result);
 
-        request.onerror = () =>
-          reject(request.error);
-      },
-    )
-  );
+    request.onerror = () => reject(request.error);
+  }));
 };
 
-const request = <T>(
-  operation: IDBRequest<T>,
-) =>
+const request = <T>(operation: IDBRequest<T>) =>
   new Promise<T>((resolve, reject) => {
-    operation.onsuccess = () =>
-      resolve(operation.result);
+    operation.onsuccess = () => resolve(operation.result);
 
-    operation.onerror = () =>
-      reject(operation.error);
+    operation.onerror = () => reject(operation.error);
   });
 
-const completed = (
-  transaction: IDBTransaction,
-) =>
+const completed = (transaction: IDBTransaction) =>
   new Promise<void>((resolve, reject) => {
     transaction.oncomplete = () => resolve();
 
-    transaction.onerror = () =>
-      reject(transaction.error);
+    transaction.onerror = () => reject(transaction.error);
 
-    transaction.onabort = () =>
-      reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
   });
 
-async function all<T>(
-  store: "works" | "queue",
-): Promise<T[]> {
+async function all<T>(store: "works" | "queue"): Promise<T[]> {
   const database = await db();
 
-  return request<T[]>(
-    database
-      .transaction(store)
-      .objectStore(store)
-      .getAll(),
-  );
+  return request<T[]>(database.transaction(store).objectStore(store).getAll());
 }
 
 async function emit() {
-  const queue = owner
-    ? await all<Pending>("queue")
-    : [];
+  const queue = owner ? await all<Pending>("queue") : [];
 
   Object.assign(state, {
     pending: queue.length,
-    errors: queue.filter(
-      (item) => item.error,
-    ).length,
+    errors: queue.filter((item) => item.error).length,
     syncing,
     offline: !navigator.onLine,
   });
 
-  listeners.forEach(
-    (listener) => listener({ ...state }),
-  );
+  listeners.forEach((listener) => listener({ ...state }));
 }
 
-export function observeSync(
-  listener: (state: SyncState) => void,
-) {
+export function observeSync(listener: (state: SyncState) => void) {
   listeners.add(listener);
   listener({ ...state });
 
@@ -211,56 +159,35 @@ export function observeSync(
 }
 
 export async function cachedWorks() {
-  return (
-    await all<Stored>("works")
-  ).map((item) => item.work);
+  return (await all<Stored>("works")).map((item) => syncStages(item.work));
 }
 
 export async function pendingOperations() {
-  return owner
-    ? all<Pending>("queue")
-    : [];
+  return owner ? all<Pending>("queue") : [];
 }
 
 export async function enqueueWork(work: Work) {
   const database = await db();
 
-  const transaction = database.transaction(
-    ["works", "queue"],
-    "readwrite",
-  );
+  const transaction = database.transaction(["works", "queue"], "readwrite");
 
   const done = completed(transaction);
 
-  const queueStore =
-    transaction.objectStore("queue");
+  const queueStore = transaction.objectStore("queue");
 
-  const workStore =
-    transaction.objectStore("works");
+  const workStore = transaction.objectStore("works");
 
-  const old = await request<
-    Pending | undefined
-  >(
-    queueStore.get(work.id),
-  );
+  const old = await request<Pending | undefined>(queueStore.get(work.id));
 
-  const saved = await request<
-    Stored | undefined
-  >(
-    workStore.get(work.id),
-  );
+  const saved = await request<Stored | undefined>(workStore.get(work.id));
 
   const pending: Pending = {
     id: work.id,
     work,
     version: crypto.randomUUID(),
-    baseRevision: old
-      ? old.baseRevision
-      : saved?.revision ?? null,
+    baseRevision: old ? old.baseRevision : (saved?.revision ?? null),
     attempts: 0,
-    error: old?.conflict
-      ? old.error
-      : null,
+    error: old?.conflict ? old.error : null,
     blocked: old?.conflict || false,
     conflict: old?.conflict,
     nextTry: 0,
@@ -291,45 +218,28 @@ export async function mergeRemote(
 ) {
   const database = await db();
 
-  const transaction = database.transaction(
-    ["works", "queue"],
-    "readwrite",
-  );
+  const transaction = database.transaction(["works", "queue"], "readwrite");
 
   const done = completed(transaction);
 
   const pending = await request<Pending[]>(
-    transaction
-      .objectStore("queue")
-      .getAll(),
+    transaction.objectStore("queue").getAll(),
   );
 
-  const pendingIds = new Set(
-    pending.map((item) => item.id),
-  );
+  const pendingIds = new Set(pending.map((item) => item.id));
 
-  const store =
-    transaction.objectStore("works");
+  const store = transaction.objectStore("works");
 
-  const local = await request<Stored[]>(
-    store.getAll(),
-  );
+  const local = await request<Stored[]>(store.getAll());
 
-  const remoteIds = new Set(
-    rows.map((row) => row.id),
-  );
+  const remoteIds = new Set(rows.map((row) => row.id));
 
   for (const row of rows) {
-    const existing = local.find(
-      (item) => item.id === row.id,
-    );
+    const existing = local.find((item) => item.id === row.id);
 
     if (
       !pendingIds.has(row.id) &&
-      (
-        !existing?.revision ||
-        row.revision >= existing.revision
-      )
+      (!existing?.revision || row.revision >= existing.revision)
     ) {
       store.put({
         id: row.id,
@@ -340,10 +250,7 @@ export async function mergeRemote(
   }
 
   for (const item of local) {
-    if (
-      !remoteIds.has(item.id) &&
-      !pendingIds.has(item.id)
-    ) {
+    if (!remoteIds.has(item.id) && !pendingIds.has(item.id)) {
       store.delete(item.id);
     }
   }
@@ -353,27 +260,16 @@ export async function mergeRemote(
   return cachedWorks();
 }
 
-async function updatePending(
-  item: Pending,
-  patch: Partial<Pending>,
-) {
+async function updatePending(item: Pending, patch: Partial<Pending>) {
   const database = await db();
 
-  const transaction = database.transaction(
-    "queue",
-    "readwrite",
-  );
+  const transaction = database.transaction("queue", "readwrite");
 
   const done = completed(transaction);
 
-  const store =
-    transaction.objectStore("queue");
+  const store = transaction.objectStore("queue");
 
-  const latest = await request<
-    Pending | undefined
-  >(
-    store.get(item.id),
-  );
+  const latest = await request<Pending | undefined>(store.get(item.id));
 
   if (latest?.version === item.version) {
     store.put({
@@ -385,36 +281,23 @@ async function updatePending(
   await done;
 }
 
-async function confirm(
-  item: Pending,
-  revision: number,
-) {
+async function confirm(item: Pending, revision: number) {
   const database = await db();
 
-  const transaction = database.transaction(
-    ["queue", "works"],
-    "readwrite",
-  );
+  const transaction = database.transaction(["queue", "works"], "readwrite");
 
   const done = completed(transaction);
 
-  const queue =
-    transaction.objectStore("queue");
+  const queue = transaction.objectStore("queue");
 
-  const latest = await request<
-    Pending | undefined
-  >(
-    queue.get(item.id),
-  );
+  const latest = await request<Pending | undefined>(queue.get(item.id));
 
   if (latest?.version === item.version) {
-    transaction
-      .objectStore("works")
-      .put({
-        id: item.id,
-        work: item.work,
-        revision,
-      });
+    transaction.objectStore("works").put({
+      id: item.id,
+      work: item.work,
+      revision,
+    });
 
     queue.delete(item.id);
   } else if (latest) {
@@ -425,33 +308,24 @@ async function confirm(
       baseRevision: revision,
     });
 
-    transaction
-      .objectStore("works")
-      .put({
-        id: item.id,
-        work: latest.work,
-        revision,
-      });
+    transaction.objectStore("works").put({
+      id: item.id,
+      work: latest.work,
+      revision,
+    });
   }
 
   await done;
 }
 
 async function performFlush() {
-  if (
-    syncing ||
-    !owner ||
-    !transport ||
-    !navigator.onLine
-  ) {
+  if (syncing || !owner || !transport || !navigator.onLine) {
     return;
   }
 
   const currentOwner = owner;
 
-  if (
-    await transport.currentUser() !== owner
-  ) {
+  if ((await transport.currentUser()) !== owner) {
     return;
   }
 
@@ -459,26 +333,17 @@ async function performFlush() {
   await emit();
 
   try {
-    for (
-      const item of
-      await all<Pending>("queue")
-    ) {
+    for (const item of await all<Pending>("queue")) {
       if (owner !== currentOwner) {
         break;
       }
 
-      if (
-        item.blocked ||
-        item.nextTry > Date.now()
-      ) {
+      if (item.blocked || item.nextTry > Date.now()) {
         continue;
       }
 
       try {
-        const data = await transport.save(
-          item.work,
-          item.baseRevision,
-        );
+        const data = await transport.save(item.work, item.baseRevision);
 
         if (owner !== currentOwner) {
           break;
@@ -487,25 +352,19 @@ async function performFlush() {
         if (!isConfirmed(data)) {
           await updatePending(item, {
             blocked: true,
-            conflict: (
-              data as { ok?: boolean }
-            )?.ok === false,
+            conflict: (data as { ok?: boolean })?.ok === false,
             error:
               (
                 data as {
                   reason?: string;
                 }
-              )?.reason ||
-              "Resposta sem confirmação de sucesso",
+              )?.reason || "Resposta sem confirmação de sucesso",
           });
 
           continue;
         }
 
-        await confirm(
-          item,
-          data.revision,
-        );
+        await confirm(item, data.revision);
       } catch (error) {
         if (owner !== currentOwner) {
           break;
@@ -518,16 +377,9 @@ async function performFlush() {
               error as {
                 message?: string;
               }
-            )?.message ||
-            String(error),
-          blocked:
-            classifySyncError(error) ===
-            "blocked",
-          nextTry:
-            Date.now() +
-            retryDelay(
-              item.attempts + 1,
-            ),
+            )?.message || String(error),
+          blocked: classifySyncError(error) === "blocked",
+          nextTry: Date.now() + retryDelay(item.attempts + 1),
         });
       }
     }
@@ -561,43 +413,25 @@ export function startSync() {
     void flushQueue();
   };
 
-  window.addEventListener(
-    "online",
-    online,
-  );
+  window.addEventListener("online", online);
 
-  window.addEventListener(
-    "offline",
-    online,
-  );
+  window.addEventListener("offline", online);
 
-  const interval = setInterval(
-    online,
-    15000,
-  );
+  const interval = setInterval(online, 15000);
 
   void flushQueue();
 
   return () => {
-    window.removeEventListener(
-      "online",
-      online,
-    );
+    window.removeEventListener("online", online);
 
-    window.removeEventListener(
-      "offline",
-      online,
-    );
+    window.removeEventListener("offline", online);
 
     clearInterval(interval);
   };
 }
 
 export async function retryErrors() {
-  for (
-    const item of
-    await pendingOperations()
-  ) {
+  for (const item of await pendingOperations()) {
     if (!item.conflict) {
       await updatePending(item, {
         blocked: false,
@@ -611,13 +445,9 @@ export async function retryErrors() {
   void flushQueue();
 }
 
-export async function acceptRemote(
-  id: string,
-) {
+export async function acceptRemote(id: string) {
   if (!supabase) {
-    throw new Error(
-      "Servidor indisponível",
-    );
+    throw new Error("Servidor indisponível");
   }
 
   const { data, error } = await supabase
@@ -632,27 +462,20 @@ export async function acceptRemote(
 
   const database = await db();
 
-  const transaction = database.transaction(
-    ["works", "queue"],
-    "readwrite",
-  );
+  const transaction = database.transaction(["works", "queue"], "readwrite");
 
   const done = completed(transaction);
 
-  transaction
-    .objectStore("works")
-    .put({
-      id,
-      work: data.payload,
-      revision: data.revision,
-    });
+  transaction.objectStore("works").put({
+    id,
+    work: syncStages(data.payload as Work),
+    revision: data.revision,
+  });
 
-  transaction
-    .objectStore("queue")
-    .delete(id);
+  transaction.objectStore("queue").delete(id);
 
   await done;
   await emit();
 
-  return data.payload as Work;
+  return syncStages(data.payload as Work);
 }

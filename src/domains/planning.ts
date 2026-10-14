@@ -1,5 +1,6 @@
 import {
   budgetTotal,
+  executionStage,
   effectiveLength,
   eligible,
   type Work,
@@ -12,24 +13,15 @@ export const day = (value: string) => {
     return NaN;
   }
 
-  const timestamp = Date.parse(
-    value + "T00:00:00Z",
-  );
+  const timestamp = Date.parse(value + "T00:00:00Z");
 
-  return (
-    Number.isFinite(timestamp) &&
-    new Date(timestamp)
-      .toISOString()
-      .slice(0, 10) === value
-  )
+  return Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === value
     ? timestamp
     : NaN;
 };
 
-export function validRange(
-  start: string,
-  end: string,
-) {
+export function validRange(start: string, end: string) {
   return (
     Number.isFinite(day(start)) &&
     Number.isFinite(day(end)) &&
@@ -38,22 +30,16 @@ export function validRange(
 }
 
 export function workRange(work: Work) {
-  const items = work.stages.filter(
-    (stage) => eligible(stage.status),
-  );
+  const items = work.stages.filter((stage) => eligible(stage.status));
 
   const starts = items
     .map((stage) => stage.start)
-    .filter(
-      (value) => Number.isFinite(day(value)),
-    )
+    .filter((value) => Number.isFinite(day(value)))
     .sort();
 
   const ends = items
     .map((stage) => stage.end)
-    .filter(
-      (value) => Number.isFinite(day(value)),
-    )
+    .filter((value) => Number.isFinite(day(value)))
     .sort();
 
   return {
@@ -77,13 +63,11 @@ export type Bucket = {
 // Semanas que atravessam meses são divididas
 // em grupos distintos, sem duplicar dias.
 
-export function forecast(
-  works: Work[],
-): Bucket[] {
+export function forecast(works: Work[]): Bucket[] {
   const map = new Map<string, Bucket>();
 
   for (const work of works) {
-    const stage = work.stages[6];
+    const stage = executionStage(work);
 
     if (
       !stage ||
@@ -106,25 +90,14 @@ export function forecast(
       }
     >();
 
-    for (
-      let timestamp = start;
-      timestamp <= end;
-      timestamp += DAY
-    ) {
+    for (let timestamp = start; timestamp <= end; timestamp += DAY) {
       const date = new Date(timestamp);
 
-      const iso = date
-        .toISOString()
-        .slice(0, 10);
+      const iso = date.toISOString().slice(0, 10);
 
       const month = iso.slice(0, 7);
 
-      const monday = new Date(
-        timestamp -
-          (
-            (date.getUTCDay() + 6) % 7
-          ) * DAY,
-      )
+      const monday = new Date(timestamp - ((date.getUTCDay() + 6) % 7) * DAY)
         .toISOString()
         .slice(0, 10);
 
@@ -138,9 +111,7 @@ export function forecast(
       });
     }
 
-    const cents = Math.round(
-      budgetTotal(work) * 100,
-    );
+    const cents = Math.round(budgetTotal(work) * 100);
 
     let used = 0;
     let elapsed = 0;
@@ -148,9 +119,7 @@ export function forecast(
     for (const [key, group] of groups) {
       elapsed += group.days;
 
-      const cumulative = Math.round(
-        (cents * elapsed) / total,
-      );
+      const cumulative = Math.round((cents * elapsed) / total);
 
       const allocated = cumulative - used;
       used = cumulative;
@@ -164,21 +133,11 @@ export function forecast(
         cents: 0,
       };
 
-      bucket.start =
-        bucket.start < group.start
-          ? bucket.start
-          : group.start;
+      bucket.start = bucket.start < group.start ? bucket.start : group.start;
 
-      bucket.end =
-        bucket.end > group.end
-          ? bucket.end
-          : group.end;
+      bucket.end = bucket.end > group.end ? bucket.end : group.end;
 
-      bucket.length +=
-        (
-          effectiveLength(work) *
-          group.days
-        ) / total;
+      bucket.length += (effectiveLength(work) * group.days) / total;
 
       bucket.cents += allocated;
 
@@ -192,15 +151,11 @@ export function forecast(
     }
   }
 
-  return [...map.values()].sort(
-    (a, b) => a.key.localeCompare(b.key),
-  );
+  return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
 export function validateWork(work: Work) {
-  const labels: Partial<
-    Record<keyof Work, string>
-  > = {
+  const labels: Partial<Record<keyof Work, string>> = {
     address: "Endereço",
     district: "Bairro",
     city: "Município",
@@ -216,52 +171,25 @@ export function validateWork(work: Work) {
   };
 
   const errors = Object.entries(labels)
-    .filter(
-      ([key]) =>
-        !String(
-          work[key as keyof Work] ?? "",
-        ).trim(),
-    )
-    .map(
-      ([, label]) =>
-        label + " é obrigatório.",
-    );
+    .filter(([key]) => !String(work[key as keyof Work] ?? "").trim())
+    .map(([, label]) => label + " é obrigatório.");
 
-  for (
-    const key of [
-      "links",
-      "png",
-      "booster",
-      "vrp",
-    ] as const
-  ) {
-    if (
-      !Number.isFinite(work[key]) ||
-      work[key] < 0
-    ) {
-      errors.push(
-        key +
-          ": informe um número maior ou igual a zero.",
-      );
+  for (const key of ["links", "png", "booster", "vrp"] as const) {
+    if (!Number.isFinite(work[key]) || work[key] < 0) {
+      errors.push(key + ": informe um número maior ou igual a zero.");
     }
   }
 
   if (
     work.pavements.some(
-      (pavement) =>
-        !Number.isFinite(pavement.length) ||
-        pavement.length < 0,
+      (pavement) => !Number.isFinite(pavement.length) || pavement.length < 0,
     )
   ) {
-    errors.push(
-      "Informe extensões válidas dos pavimentos.",
-    );
+    errors.push("Informe extensões válidas dos pavimentos.");
   }
 
   if (!work.pavements.length) {
-    errors.push(
-      "Selecione ao menos um pavimento.",
-    );
+    errors.push("Selecione ao menos um pavimento.");
   }
 
   return errors;

@@ -57,7 +57,10 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.match(event.request)
+    // App-shell files are static, same-origin assets. A server's Vary: Origin
+    // must not make the precached response unusable for crossorigin module loads.
+    caches.open(CACHE)
+      .then((cache) => cache.match(event.request, { ignoreVary: true }))
       .then((cached) => cached || fetch(event.request))
   );
 });

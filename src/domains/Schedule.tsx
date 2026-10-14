@@ -1,8 +1,5 @@
-import {
-  useState,
-  type ReactNode,
-} from "react";
-
+import { useEffect, useState, type ReactNode } from "react";
+import { Building2, Ruler, Cable, Users, Activity, Wallet } from "lucide-react";
 import {
   dateToday,
   statusColor,
@@ -10,17 +7,21 @@ import {
   budgetTotal,
   executionPercent,
   effectiveLength,
-  workStatus,
+  executionStatus,
+  eligible,
   type Work,
   type User,
 } from "../model";
-
+import { day, validRange, forecast } from "./planning";
 import {
-  day,
-  validRange,
-  workRange,
-  forecast,
-} from "./planning";
+  DAY,
+  position,
+  timelineRange,
+  calendarTicks,
+  financialMonth,
+  monthLabel,
+  type Range,
+} from "./timeline";
 
 type Row = {
   id: string;
@@ -31,398 +32,211 @@ type Row = {
   responsible?: string;
   note?: string;
 };
-
-type TimelineProps = {
-  rows: Row[];
-  users?: User[];
-  header?: ReactNode;
-};
-
+function useToday() {
+  const [today, setToday] = useState(dateToday);
+  useEffect(() => {
+    const timer = setInterval(() => setToday(dateToday()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+  return today;
+}
+function Today({
+  range,
+  today,
+  label = false,
+}: {
+  range: Range;
+  today: string;
+  label?: boolean;
+}) {
+  const t = day(today);
+  return range.hasDates && t >= range.first && t <= range.last ? (
+    <i
+      className="today-line"
+      title="Hoje"
+      style={{ left: position(t, range) + "%" }}
+    >
+      {label && <b>HOJE</b>}
+    </i>
+  ) : null;
+}
+function Axis({ range, today }: { range: Range; today: string }) {
+  const { months, weeks } = calendarTicks(range);
+  return (
+    <div className="timeline-axis">
+      <div className="axis-months">
+        {months.map((m) => (
+          <span
+            key={m.start}
+            style={{
+              left: position(m.start, range) + "%",
+              width: ((m.end - m.start) / DAY / range.span) * 100 + "%",
+            }}
+            title={m.label}
+          >
+            {m.label}
+          </span>
+        ))}
+      </div>
+      <div className="axis-weeks">
+        {weeks.map((w) => (
+          <span
+            key={w.timestamp}
+            style={{ left: position(w.timestamp, range) + "%" }}
+            title={
+              "Segunda-feira " +
+              new Date(w.timestamp).toISOString().slice(0, 10)
+            }
+          >
+            {w.label}
+          </span>
+        ))}
+      </div>
+      <Today range={range} today={today} label />
+    </div>
+  );
+}
+function Track({
+  row,
+  range,
+  today,
+  color,
+}: {
+  row: Row;
+  range: Range;
+  today: string;
+  color?: string;
+}) {
+  const { weeks } = calendarTicks(range);
+  return (
+    <div className="timeline-track">
+      {weeks.map((w) => (
+        <i
+          key={w.timestamp}
+          className="timeline-grid"
+          style={{ left: position(w.timestamp, range) + "%" }}
+        />
+      ))}
+      <Today range={range} today={today} />
+      {validRange(row.start, row.end) && (
+        <div
+          className={"gantt-bar " + (color || statusColor(row.status, row.end))}
+          title={`${typeof row.name === "string" ? row.name : ""}: ${row.start} a ${row.end}`}
+          style={{
+            left: position(day(row.start), range) + "%",
+            width:
+              (((day(row.end) - day(row.start)) / DAY + 1) / range.span) * 100 +
+              "%",
+          }}
+        />
+      )}
+    </div>
+  );
+}
 export function Timeline({
   rows,
   users = [],
   header,
-}: TimelineProps) {
-  const [
-    expanded,
-    setExpanded,
-  ] = useState(false);
-
-  const dates = rows
-    .filter(
-      (row) =>
-        validRange(
-          row.start,
-          row.end,
-        ),
-    )
-    .flatMap(
-      (row) => [
-        day(row.start),
-        day(row.end),
-      ],
-    );
-
-  const first = dates.length
-    ? Math.min(...dates)
-    : day(dateToday());
-
-  const last = dates.length
-    ? Math.max(...dates)
-    : first;
-
-  const span =
-    (last - first) / 86400000 + 1;
-
-  // A faixa temporal ocupa sempre a largura disponível, sem rolagem interna.
-
-  const now =
-    (
-      (day(dateToday()) - first) /
-      86400000 /
-      span
-    ) * 100;
-
-  const ticks: {
-    t: number;
-    label: string;
-  }[] = [];
-
-  for (
-    let timestamp = first;
-    timestamp <= last;
-    timestamp += 86400000
-  ) {
-    const date = new Date(timestamp);
-
-    if (
-      timestamp === first ||
-      date.getUTCDate() === 1 ||
-      (span <= 100 && date.getUTCDay() === 1)
-    ) {
-      const prefix =
-        date.getUTCDate() === 1 ||
-        timestamp === first
-          ? (
-              date.toLocaleDateString(
-                "pt-BR",
-                {
-                  timeZone: "UTC",
-                  month: "long",
-                  year: "numeric",
-                },
-              ) + " · "
-            )
-          : "Semana · ";
-
-      ticks.push({
-        t: timestamp,
-        label:
-          prefix +
-          date.toLocaleDateString(
-            "pt-BR",
-            {
-              timeZone: "UTC",
-              day: "2-digit",
-              month: "short",
-            },
-          ),
-      });
-    }
-  }
-
+}: {
+  rows: Row[];
+  users?: User[];
+  header?: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const today = useToday();
+  const range = timelineRange(rows);
   return (
-    <div
-      className={
-        expanded
-          ? "schedule-expanded"
-          : "schedule"
-      }
-    >
+    <div className={expanded ? "schedule-expanded" : "schedule"}>
       {header}
-
-      <button
-        onClick={() =>
-          setExpanded(!expanded)
-        }
-      >
-        {expanded
-          ? "Fechar visualização expandida"
-          : "Expandir cronograma"}
-      </button>
-
-      {expanded && (
-        <button
-          onClick={() =>
-            window.print()
-          }
-        >
-          Imprimir
+      <div className="schedule-actions">
+        <button onClick={() => setExpanded(!expanded)}>
+          {expanded ? "Fechar visualização expandida" : "Expandir cronograma"}
         </button>
-      )}
-
+        {expanded && <button onClick={() => window.print()}>Imprimir</button>}
+      </div>
       <div className="timeline-responsive">
         <table className="timeline-table">
+          <colgroup>
+            <col style={{ width: "23%" }} />
+            <col style={{ width: "39%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "13%" }} />
+          </colgroup>
           <thead>
             <tr>
+              <th>ETAPA / DOCUMENTO</th>
               <th>
-                Etapa / Documento / Obra
+                GRÁFICO GANTT
+                <Axis range={range} today={today} />
               </th>
-
-              <th>
-                <div
-                  className="timeline-axis"
-                  
-                >
-                  {ticks.map(
-                    (tick) => (
-                      <span
-                        key={tick.t}
-                        style={{
-                          left:
-                            (
-                              (
-                                tick.t - first
-                              ) /
-                              86400000 /
-                              span
-                            ) * 100 + "%",
-                        }}
-                      >
-                        {tick.label}
-                      </span>
-                    ),
-                  )}
-                </div>
-              </th>
-
-              <th>Status</th>
-              <th>Responsável</th>
-              <th>Observação</th>
+              <th>STATUS</th>
+              <th>RESPONSÁVEL</th>
+              <th>OBSERVAÇÃO</th>
             </tr>
           </thead>
-
           <tbody>
-            {rows.map(
-              (row) => (
-                <tr key={row.id}>
-                  <td>
-                    {row.name}
-                  </td>
-
-                  <td>
-                    <div
-                      className="timeline-track"
-                      
-                    >
-                      {ticks.map(
-                        (tick) => (
-                          <i
-                            key={tick.t}
-                            className="timeline-grid"
-                            style={{
-                              left:
-                                (
-                                  (
-                                    tick.t -
-                                    first
-                                  ) /
-                                  86400000 /
-                                  span
-                                ) * 100 + "%",
-                            }}
-                          />
-                        ),
-                      )}
-
-                      {now >= 0 &&
-                        now <= 100 && (
-                          <i
-                            className="today-line"
-                            title="Hoje"
-                            style={{
-                              left:
-                                now + "%",
-                            }}
-                          />
-                        )}
-
-                      {validRange(
-                        row.start,
-                        row.end,
-                      ) && (
-                        <div
-                          className={
-                            "gantt-bar " +
-                            statusColor(
-                              row.status,
-                              row.end,
-                            )
-                          }
-                          title={
-                            row.start +
-                            " a " +
-                            row.end
-                          }
-                          style={{
-                            left:
-                              (
-                                (
-                                  day(row.start) -
-                                  first
-                                ) /
-                                86400000 /
-                                span
-                              ) * 100 + "%",
-
-                            width:
-                              (
-                                (
-                                  (
-                                    day(row.end) -
-                                    day(row.start)
-                                  ) /
-                                  86400000 +
-                                  1
-                                ) /
-                                span
-                              ) * 100 + "%",
-                          }}
-                        />
-                      )}
-                    </div>
-
-                    <small>
-                      {row.start}
-                      {" — "}
-                      {row.end}
-                    </small>
-                  </td>
-
-                  <td>
-                    <span
-                      className={
-                        "pill " +
-                        statusColor(
-                          row.status,
-                          row.end,
-                        )
-                      }
-                    >
-                      {row.status}
-                    </span>
-                  </td>
-
-                  <td>
-                    {users.find(
-                      (user) =>
-                        user.id ===
-                        row.responsible,
-                    )?.name || "—"}
-                  </td>
-
-                  <td className="schedule-note">
-                    {row.note}
-                  </td>
-                </tr>
-              ),
-            )}
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td>{row.name}</td>
+                <td>
+                  <div className="cell-today">
+                    <Today range={range} today={today} />
+                  </div>
+                  <Track row={row} range={range} today={today} />
+                </td>
+                <td>
+                  <span className={"pill " + statusColor(row.status, row.end)}>
+                    {row.status}
+                  </span>
+                </td>
+                <td>
+                  {users.find((u) => u.id === row.responsible)?.name || "—"}
+                </td>
+                <td className="schedule-note">{row.note || "—"}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
+      {!range.hasDates && (
+        <p className="hint">Nenhum período planejado informado.</p>
+      )}
     </div>
   );
 }
-
-export function WorkSchedule({
-  work,
-  users,
-}: {
-  work: Work;
-  users: User[];
-}) {
-  const [
-    open,
-    setOpen,
-  ] = useState<string[]>([]);
-
-  const hidden = (
-    status: string,
-  ) =>
-    [
-      "CADASTRADO",
-      "CANCELADO",
-      "NÃO SE APLICA",
-    ].includes(status);
-
+export function WorkSchedule({ work, users }: { work: Work; users: User[] }) {
+  const [open, setOpen] = useState<string[]>([]);
   const rows: Row[] = [];
-
-  for (
-    const [index, stage]
-    of work.stages.entries()
-  ) {
+  for (const stage of work.stages) {
     const docs =
-      index === 3
+      stage.name === "Checklist de Início de Obra"
         ? work.startDocs
-        : index === 10
+        : stage.name === "Checklist de Conclusão de Obra"
           ? work.endDocs
           : undefined;
-
-    if (!hidden(stage.status)) {
-      rows.push({
-        ...stage,
-        name: docs ? (
-          <button
-            onClick={() =>
-              setOpen(
-                (current) =>
-                  current.includes(
-                    stage.id,
-                  )
-                    ? current.filter(
-                        (id) =>
-                          id !== stage.id,
-                      )
-                    : [
-                        ...current,
-                        stage.id,
-                      ],
-              )
-            }
-          >
-            {open.includes(stage.id)
-              ? "−"
-              : "+"}
-            {" "}
-            {stage.name}
-          </button>
-        ) : (
-          stage.name
-        ),
-      });
-    }
-
-    if (
-      docs &&
-      open.includes(stage.id)
-    ) {
-      rows.push(
-        ...docs
-          .filter(
-            (doc) =>
-              !hidden(doc.status),
-          )
-          .map(
-            (doc) => ({
-              ...doc,
-              name:
-                "↳ " + doc.name,
-            }),
-          ),
-      );
-    }
+    rows.push({
+      ...stage,
+      name: docs ? (
+        <button
+          aria-expanded={open.includes(stage.id)}
+          onClick={() =>
+            setOpen((v) =>
+              v.includes(stage.id)
+                ? v.filter((id) => id !== stage.id)
+                : [...v, stage.id],
+            )
+          }
+        >
+          {open.includes(stage.id) ? "−" : "+"} {stage.name}
+        </button>
+      ) : (
+        stage.name
+      ),
+    });
+    if (docs && open.includes(stage.id))
+      rows.push(...docs.map((doc) => ({ ...doc, name: "↳ " + doc.name })));
   }
-
   const identification = [
     ["Município", work.city],
     ["Endereço", work.address],
@@ -433,427 +247,333 @@ export function WorkSchedule({
     ["Água/Esgoto", work.ae],
     ["Método", work.method],
     ["Prioridade", work.priority],
-    [
-      "Extensão calculada (m)",
-      effectiveLength(work).toFixed(1),
-    ],
+    ["Extensão calculada (m)", effectiveLength(work).toFixed(1)],
     ["Ligações", work.links],
     ["PNG", work.png],
     ["Booster/EEE", work.booster],
     ["VRP", work.vrp],
+    ["Solicitante", work.requester],
+    ["Documento de solicitação", work.requestDocument],
     [
       "Pavimentos",
-      work.pavements
-        .map(
-          (pavement) =>
-            pavement.type +
-            ": " +
-            pavement.length +
-            " m",
-        )
-        .join(", "),
+      work.pavements.map((p) => `${p.type}: ${p.length} m`).join(", "),
     ],
-    [
-      "Informações relevantes",
-      work.notes,
-    ],
-    [
-      "Orçamento total",
-      money(budgetTotal(work)),
-    ],
-    [
-      "Status geral",
-      workStatus(work),
-    ],
-    [
-      "Percentual executado",
-      executionPercent(work)
-        .toFixed(1) + "%",
-    ],
-    [
-      "Data de emissão",
-      dateToday(),
-    ],
-  ] as const;
-
+    ["Data de cadastro", work.createdAt.slice(0, 10)],
+    ["Data de emissão", dateToday()],
+  ];
   return (
     <Timeline
       rows={rows}
       users={users}
       header={
         <>
-          <div className="schedule-heading"><h2>CRONOGRAMA DA OBRA</h2><small>Planejamento e acompanhamento das etapas e documentos da obra</small></div>
-
-          <div className="schedule-identification">
-            {identification
-              .filter(
-                ([, value]) =>
-                  value !== "",
-              )
-              .map(
-                ([label, value]) => (
-                  <span key={label}>
-                    <b>
-                      {label}:{" "}
-                    </b>
-                    {value}
-                  </span>
-                ),
-              )}
+          <div className="schedule-heading">
+            <h2>CRONOGRAMA DA OBRA</h2>
+            <small>
+              Planejamento e acompanhamento das etapas e documentos da obra
+            </small>
+          </div>
+          <div className="schedule-summary">
+            <div className="schedule-identification">
+              {identification.map(([label, value]) => (
+                <span key={label}>
+                  <b>{label}: </b>
+                  {value || "—"}
+                </span>
+              ))}
+              <span className="identification-notes">
+                <b>Informações relevantes: </b>
+                {work.notes || "—"}
+              </span>
+            </div>
+            <div className="schedule-cards">
+              <div className="kpi">
+                <Activity />
+                <span>
+                  <small>STATUS DA EXECUÇÃO</small>
+                  <strong>{executionStatus(work)}</strong>
+                </span>
+              </div>
+              <div className="kpi">
+                <Ruler />
+                <span>
+                  <small>% EXECUTADO</small>
+                  <strong>{executionPercent(work).toFixed(1)}%</strong>
+                </span>
+              </div>
+              <div className="kpi">
+                <Wallet />
+                <span>
+                  <small>ORÇAMENTO TOTAL</small>
+                  <strong>{money(budgetTotal(work))}</strong>
+                </span>
+              </div>
+            </div>
           </div>
         </>
       }
     />
   );
 }
-
+function GeneralTimeline({
+  works,
+  onOpen,
+}: {
+  works: Work[];
+  onOpen: (id: string) => void;
+}) {
+  const today = useToday();
+  const [expanded, setExpanded] = useState(false);
+  const planned = works.flatMap((w) =>
+    w.stages.filter((s) => eligible(s.status)),
+  );
+  const range = timelineRange(planned);
+  return (
+    <section
+      className={
+        expanded ? "schedule-expanded general-schedule" : "general-schedule"
+      }
+    >
+      <div className="section-head">
+        <h2>GANTT GERAL</h2>
+        <button onClick={() => setExpanded(!expanded)}>
+          {expanded ? "Fechar visualização expandida" : "Expandir cronograma"}
+        </button>
+      </div>
+      <div className="timeline-responsive">
+        <table className="general-timeline">
+          <colgroup>
+            {[12, 8, 8, 8, 5, 5, 4, 4, 7, 10, 29].map((width, i) => (
+              <col key={i} style={{ width: width + "%" }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              {[
+                "ENDEREÇO",
+                "MUNICÍPIO",
+                "OBJETIVO",
+                "SERVIÇO",
+                "A/E",
+                "EXT (M)",
+                "LIG.",
+                "PNG",
+                "% EXEC.",
+                "STATUS EXECUÇÃO",
+              ].map((label) => (
+                <th key={label}>{label}</th>
+              ))}
+              <th>
+                GRÁFICO GANTT
+                <Axis range={range} today={today} />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {works.map((work) => (
+              <tr key={work.id}>
+                <td data-label="ENDEREÇO">
+                  <button className="link" onClick={() => onOpen(work.id)}>
+                    {work.address || "Sem endereço"}
+                  </button>
+                </td>
+                <td data-label="MUNICÍPIO">{work.city}</td>
+                <td data-label="OBJETIVO">{work.goal}</td>
+                <td data-label="SERVIÇO">{work.service}</td>
+                <td data-label="A/E">{work.ae}</td>
+                <td data-label="EXT (M)">{effectiveLength(work).toFixed(1)}</td>
+                <td data-label="LIG.">{work.links}</td>
+                <td data-label="PNG">{work.png}</td>
+                <td data-label="% EXEC.">
+                  <div
+                    className="execution-progress"
+                    role="progressbar"
+                    aria-label={"Execução de " + work.address}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={executionPercent(work)}
+                  >
+                    <i style={{ width: executionPercent(work) + "%" }} />
+                    <b>{executionPercent(work).toFixed(1)}%</b>
+                  </div>
+                </td>
+                <td data-label="STATUS EXECUÇÃO">
+                  <span
+                    className={"pill " + statusColor(executionStatus(work))}
+                  >
+                    {executionStatus(work)}
+                  </span>
+                </td>
+                <td className="general-chart-cell">
+                  <div className="cell-today">
+                    <Today range={range} today={today} />
+                  </div>
+                  <div className="stage-tracks">
+                    {work.stages
+                      .filter(
+                        (s) => eligible(s.status) && validRange(s.start, s.end),
+                      )
+                      .map((s) => (
+                        <div key={s.id} className="stage-track" title={s.name}>
+                          <Track
+                            row={s}
+                            range={range}
+                            today={today}
+                            color={
+                              s.name === "Execução de Obra" ? "blue" : "gray"
+                            }
+                          />
+                          <span>{s.name}</span>
+                        </div>
+                      ))}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!range.hasDates && (
+        <p className="hint">Nenhum período planejado informado.</p>
+      )}
+    </section>
+  );
+}
 export function Dashboard({
   works,
-  users,
   onOpen,
 }: {
   works: Work[];
   users: User[];
   onOpen: (id: string) => void;
 }) {
-  const included = works.filter(
-    (work) =>
-      workStatus(work) !==
-      "CANCELADO",
-  );
-
-  const buckets =
-    forecast(included);
-
-  const months = [
-    ...new Set(
-      buckets.map(
-        (bucket) => bucket.month,
-      ),
-    ),
-  ];
-
-  const total = buckets.reduce(
-    (sum, bucket) =>
-      sum + bucket.cents,
-    0,
-  );
-
-  const max = Math.max(
-    1,
-    ...months.map(
-      (month) =>
-        buckets
-          .filter(
-            (bucket) =>
-              bucket.month === month,
-          )
-          .reduce(
-            (sum, bucket) =>
-              sum + bucket.cents,
-            0,
-          ),
-    ),
-  );
-
+  const included = works.filter((w) => executionStatus(w) !== "CANCELADO");
+  const buckets = forecast(included);
+  const months = [...new Set(buckets.map((b) => b.month))];
+  const monthCents = (month: string) =>
+    buckets.filter((b) => b.month === month).reduce((n, b) => n + b.cents, 0);
+  const max = Math.max(1, ...months.map(monthCents));
+  const total = buckets.reduce((n, b) => n + b.cents, 0);
   const indicators = [
-    [
-      "TOTAL DE OBRAS",
-      included.length,
-    ],
-    [
-      "EXTENSÃO (m)",
-      included
-        .reduce(
-          (sum, work) =>
-            sum +
-            effectiveLength(work),
-          0,
-        )
-        .toFixed(1),
-    ],
-    [
-      "LIGAÇÕES",
-      included.reduce(
-        (sum, work) =>
-          sum + work.links,
-        0,
-      ),
-    ],
-    [
-      "PNG",
-      included.reduce(
-        (sum, work) =>
-          sum + work.png,
-        0,
-      ),
-    ],
-  ] as const;
-
+    { label: "TOTAL DE OBRAS", value: included.length, Icon: Building2 },
+    {
+      label: "EXTENSÃO (m)",
+      value: included.reduce((n, w) => n + effectiveLength(w), 0).toFixed(1),
+      Icon: Ruler,
+    },
+    {
+      label: "LIGAÇÕES",
+      value: included.reduce((n, w) => n + w.links, 0),
+      Icon: Cable,
+    },
+    {
+      label: "PNG",
+      value: included.reduce((n, w) => n + w.png, 0),
+      Icon: Users,
+    },
+  ];
   return (
     <>
       <div className="kpis">
-        {indicators.map(
-          ([label, value]) => (
-            <div
-              className="kpi"
-              key={label}
-            >
-              <span>
-                <small>
-                  {label}
-                </small>
-                <strong>
-                  {value}
-                </strong>
-              </span>
-            </div>
-          ),
-        )}
+        {indicators.map(({ label, value, Icon }) => (
+          <div className="kpi" key={label}>
+            <Icon aria-hidden="true" />
+            <span>
+              <small>{label}</small>
+              <strong>{value}</strong>
+            </span>
+          </div>
+        ))}
       </div>
-
-      <Timeline
-        users={users}
-        rows={included.map(
-          (work) => ({
-            id: work.id,
-
-            name: (
-              <button
-                className="link"
-                onClick={() =>
-                  onOpen(work.id)
-                }
-              >
-                {work.city}
-                {" · "}
-                {work.address}
-                {" · "}
-                {work.goal}
-
-                <small>
-                  {work.service}
-                  {" · "}
-                  {work.ae}
-                  {" · "}
-                  {effectiveLength(work)
-                    .toFixed(1)}
-                  {" m · "}
-                  {work.links}
-                  {" Lig. · "}
-                  {work.png}
-                  {" PNG · "}
-                  {money(
-                    budgetTotal(work),
-                  )}
-                  {" · "}
-                  {executionPercent(work)
-                    .toFixed(1)}
-                  {"%"}
-                </small>
-              </button>
-            ),
-
-            ...workRange(work),
-            status:
-              workStatus(work),
-            note:
-              work.notes,
-          }),
-        )}
-      />
-
-      <h2>
-        PREVISÃO DE EXECUÇÃO SEMANAL
-      </h2>
-
+      <GeneralTimeline works={included} onOpen={onOpen} />
+      <h2>PREVISÃO DE EXECUÇÃO SEMANAL</h2>
       <div className="table-scroll">
-        <table>
+        <table className="forecast-table">
           <thead>
             <tr>
-              <th>
-                Indicador
-              </th>
-
-              {months.flatMap(
-                (month) => [
-                  ...buckets
-                    .filter(
-                      (bucket) =>
-                        bucket.month ===
-                        month,
-                    )
-                    .map(
-                      (bucket) => (
-                        <th
-                          key={bucket.key}
-                        >
-                          {month}
-                          <br />
-                          {bucket.start.slice(8)}
-                          {" a "}
-                          {bucket.end.slice(8)}
-                        </th>
-                      ),
-                    ),
-
-                  <th key={month}>
-                    {month}
-                    <br />
-                    TOTAL DO MÊS
-                  </th>,
-                ],
-              )}
-
-              <th>
-                TOTAL GERAL
-              </th>
+              <th rowSpan={2}>Indicador</th>
+              {months.map((month) => (
+                <th
+                  key={month}
+                  colSpan={buckets.filter((b) => b.month === month).length + 1}
+                >
+                  {monthLabel(month)}
+                </th>
+              ))}
+              <th rowSpan={2}>TOTAL GERAL</th>
+            </tr>
+            <tr>
+              {months.flatMap((month) => [
+                ...buckets
+                  .filter((b) => b.month === month)
+                  .map((b) => (
+                    <th key={b.key} title={`${b.start} a ${b.end}`}>
+                      Segunda {b.key.split("|")[1].slice(8)}
+                      <small>
+                        {b.start.slice(8)} a {b.end.slice(8)}
+                      </small>
+                    </th>
+                  )),
+                <th key={month}>TOTAL DO MÊS</th>,
+              ])}
             </tr>
           </thead>
-
           <tbody>
-            {(
-              [
-                "length",
-                "links",
-              ] as const
-            ).map(
-              (field) => (
-                <tr key={field}>
-                  <th>
-                    {field === "length"
-                      ? "EXTENSÃO PREVISTA (m)"
-                      : "LIGAÇÕES PREVISTAS (un.)"}
-                  </th>
-
-                  {months.flatMap(
-                    (month) => {
-                      const selected =
-                        buckets.filter(
-                          (bucket) =>
-                            bucket.month ===
-                            month,
-                        );
-
-                      return [
-                        ...selected.map(
-                          (bucket) => (
-                            <td
-                              key={bucket.key}
-                            >
-                              {bucket[field]
-                                .toLocaleString(
-                                  "pt-BR",
-                                  {
-                                    maximumFractionDigits:
-                                      2,
-                                  },
-                                )}
-                            </td>
-                          ),
-                        ),
-
-                        <td key={month}>
-                          <b>
-                            {selected
-                              .reduce(
-                                (sum, bucket) =>
-                                  sum +
-                                  bucket[field],
-                                0,
-                              )
-                              .toLocaleString(
-                                "pt-BR",
-                                {
-                                  maximumFractionDigits:
-                                    2,
-                                },
-                              )}
-                          </b>
-                        </td>,
-                      ];
-                    },
-                  )}
-
-                  <td>
-                    {buckets
-                      .reduce(
-                        (sum, bucket) =>
-                          sum +
-                          bucket[field],
-                        0,
-                      )
-                      .toLocaleString(
-                        "pt-BR",
-                        {
-                          maximumFractionDigits:
-                            2,
-                        },
-                      )}
-                  </td>
-                </tr>
-              ),
-            )}
+            {(["length", "links"] as const).map((field) => (
+              <tr key={field}>
+                <th>
+                  {field === "length"
+                    ? "EXTENSÃO PREVISTA (m)"
+                    : "LIGAÇÕES PREVISTAS (un.)"}
+                </th>
+                {months.flatMap((month) => {
+                  const selected = buckets.filter((b) => b.month === month);
+                  return [
+                    ...selected.map((b) => (
+                      <td key={b.key}>
+                        {b[field].toLocaleString("pt-BR", {
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                    )),
+                    <td key={month}>
+                      <b>
+                        {selected
+                          .reduce((n, b) => n + b[field], 0)
+                          .toLocaleString("pt-BR", {
+                            maximumFractionDigits: 2,
+                          })}
+                      </b>
+                    </td>,
+                  ];
+                })}
+                <td>
+                  {buckets
+                    .reduce((n, b) => n + b[field], 0)
+                    .toLocaleString("pt-BR", { maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
-
-      <h2>
-        PREVISÃO FINANCEIRA MENSAL — ORÇAMENTO
-      </h2>
-
+      <h2>PREVISÃO FINANCEIRA MENSAL — ORÇAMENTO</h2>
       <div className="financial-chart">
-        {months.map(
-          (month) => {
-            const cents = buckets
-              .filter(
-                (bucket) =>
-                  bucket.month === month,
-              )
-              .reduce(
-                (sum, bucket) =>
-                  sum + bucket.cents,
-                0,
-              );
-
-            return (
-              <div key={month}>
-                <strong>
-                  {money(cents / 100)}
-                </strong>
-
-                <div
-                  style={{
-                    height:
-                      Math.max(
-                        2,
-                        (
-                          cents / max
-                        ) * 180,
-                      ),
-                  }}
-                />
-
-                <span>
-                  {month}
-                </span>
-              </div>
-            );
-          },
-        )}
+        {months.map((month) => (
+          <div key={month}>
+            <strong>{money(monthCents(month) / 100)}</strong>
+            <div
+              style={{ height: Math.max(2, (monthCents(month) / max) * 180) }}
+            />
+            <span>{financialMonth(month)}</span>
+          </div>
+        ))}
       </div>
-
-      <strong>
-        Total previsto:
-        {" "}
-        {money(total / 100)}
-      </strong>
-
+      <strong>Total previsto: {money(total / 100)}</strong>
       <p className="hint">
-        Obras sem período válido de
-        Execução de Obra não geram
-        projeções. Semanas que cruzam
-        meses são divididas por dia.
+        Obras sem período válido de Execução de Obra não geram projeções.
+        Semanas que cruzam meses são divididas por dia; ligações são atribuídas
+        à semana de término.
       </p>
     </>
   );

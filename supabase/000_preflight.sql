@@ -28,7 +28,7 @@ select
   jsonb_array_length(payload->'startDocs') as initial_docs,
   jsonb_array_length(payload->'endDocs') as final_docs
 from public.obras
-where jsonb_array_length(payload->'stages') is distinct from 11
+where jsonb_array_length(payload->'stages') is distinct from 12
    or jsonb_array_length(payload->'startDocs') is distinct from 19
    or jsonb_array_length(payload->'endDocs') is distinct from 7;
 
