@@ -136,3 +136,4 @@ test("auditoria guarda apenas campos alterados e ignora reordenação das entida
   assert.ok(changedFields(a, { ...a, stages: [] })["stages[x]"]);
 });
 await import("./database.mjs");
+await import("./sketch.mjs");

@@ -73,13 +73,21 @@ async function login(page, works = [fixture()]) {
 async function navigate(page, name) {
   if (await page.locator(".hamburger").isVisible())
     await page.locator(".hamburger").click();
+  const label = name === "Dashboard" ? "Dashboard de Obras" : name;
+  const group = ["Usuários", "Auditoria"].includes(label)
+    ? "ADMINISTRAÇÃO"
+    : "OBRAS";
+  const toggle = page.locator(".nav-group-toggle").filter({ hasText: group });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true")
+    await toggle.click();
   await page
-    .locator(".sidebar nav")
-    .getByRole("button", { name, exact: true })
+    .locator(".nav-group-links")
+    .getByRole("button", { name: label, exact: true })
     .click();
 }
 async function openWork(page) {
   await page.locator(".work-row").first().click();
+  await page.getByRole("button", { name: /^CROQUI DA OBRA/ }).click();
   await expect(page.locator(".map-wrap")).toBeVisible();
 }
 async function filterRequester(page, names) {
@@ -93,7 +101,7 @@ async function filterRequester(page, names) {
     await multi.getByLabel(name, { exact: true }).check();
   await multi.getByRole("button", { name: "Concluir" }).click();
 }
-test("filtros Solicitante combinam OR interno e AND com Município nas três telas", async ({
+test("filtros combinam solicitantes e município; dashboard e carteira filtram por obra", async ({
   page,
 }) => {
   const a = fixture(),
@@ -111,12 +119,28 @@ test("filtros Solicitante combinam OR interno e AND com Município nas três tel
   await city.getByRole("button", { name: "Concluir" }).click();
   await expect(page.locator(".work-row")).toHaveCount(1);
   await navigate(page, "Dashboard");
-  await filterRequester(page, ["Sabesp"]);
-  await expect(page.locator(".general-timeline tbody tr")).toHaveCount(1);
+  // A navegação atual limpa os filtros da tela anterior.
+  await expect(
+    page.locator(".general-timeline tbody tr:not(.municipality-row)"),
+  ).toHaveCount(3);
+  const chooseWork = async () => {
+    await page.getByRole("button", { name: /^Filtros/ }).click();
+    const multi = page
+      .locator(".multi")
+      .filter({ has: page.locator("label", { hasText: /^Obra$/ }) });
+    await multi.locator(".multi-trigger").click();
+    await multi.getByLabel("OB-0002", { exact: true }).check();
+    await multi.getByRole("button", { name: "Concluir", exact: true }).click();
+  };
+  await chooseWork();
+  await expect(
+    page.locator(".general-timeline tbody tr:not(.municipality-row)"),
+  ).toHaveCount(1);
   await expect(page.locator(".general-timeline tbody")).toContainText("Rua B");
   await expect(page.locator(".kpi").first()).toContainText("1");
   await navigate(page, "Carteira de Atividades");
-  await filterRequester(page, ["Sabesp"]);
+  await chooseWork();
+  await page.getByRole("button", { name: "Aplicar", exact: true }).click();
   await expect(page.locator(".main")).toContainText("Rua B");
   await expect(page.locator(".main")).not.toContainText("Rua C");
 });
@@ -171,7 +195,13 @@ test("croqui: consulta, cancelar, salvar, persistir, auditoria e exclusão confi
   expect(JSON.parse(audit[0].after)).toEqual({
     "segments[s1].name": "Trecho atualizado",
     "segments[s1].status": "CONCLUÍDO",
+    "segments[s1].statusAt": expect.any(String),
   });
+  expect(
+    Number.isFinite(
+      Date.parse(JSON.parse(audit[0].after)["segments[s1].statusAt"]),
+    ),
+  ).toBe(true);
   await page.reload();
   await page.locator("input[type=email]").fill("demo@example.com");
   await page.getByRole("button", { name: "Entrar em demonstração" }).click();
@@ -239,7 +269,9 @@ test("12 etapas, LIG/PNG persiste, checklist e cronograma mantêm documentos", a
   );
 });
 for (const width of [360, 390, 768, 1024, 1440])
-  test(`responsividade e colunas completas em ${width}px`, async ({ page }) => {
+  test(`responsividade, agrupamento por município e edição em ${width}px`, async ({
+    page,
+  }) => {
     await page.setViewportSize({ width, height: 900 });
     await login(page);
     const errors = [];
@@ -254,17 +286,15 @@ for (const width of [360, 390, 768, 1024, 1440])
     await navigate(page, "Dashboard");
     await expect(page.locator(".general-timeline thead tr th")).toHaveText([
       "ENDEREÇO",
-      "MUNICÍPIO",
-      "OBJETIVO",
-      "SERVIÇO",
       "A/E",
       "EXT (M)",
       "LIG.",
       "PNG",
       "% EXEC.",
       "STATUS EXECUÇÃO",
-      /GRÁFICO GANTT/,
+      /HOJE/,
     ]);
+    await expect(page.locator(".municipality-row")).toContainText("SUZANO");
     await noOverflow();
     await navigate(page, "Obras");
     await openWork(page);
