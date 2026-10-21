@@ -19,6 +19,8 @@ import {
   uid,
   distance,
   segLength,
+  calculatedLength,
+  executedLength,
   meters,
   SEG_STATUS,
   type Work,
@@ -218,10 +220,17 @@ function SegmentLabels({
   return null;
 }
 
+function CursorTracker({onMove}:{onMove:(point:[number,number])=>void}){
+ useMapEvents({mousemove:e=>onMove([e.latlng.lat,e.latlng.lng])});return null;
+}
+
 export default function MapEditor({ work, onChange, readOnly = false }: Props) {
-  const [mode, setMode] = useState<"point" | "line" | "edit" | null>(null);
+  const [mode, setMode] = useState<"point" | "line" | "edit" | "split" | null>(null);
 
   const [draft, setDraft] = useState<Point[]>([]);
+  const [cursor, setCursor] = useState<[number,number]|null>(null);
+  const [selectedPoint,setSelectedPoint]=useState<string|null>(null);
+  const [hoverSegment,setHoverSegment]=useState<string|null>(null);
 
   const [search, setSearch] = useState("");
 
@@ -247,6 +256,30 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
       setSegmentDraft({ ...work.segments.find((s) => s.id === id)! });
   };
   const selectAt = (event: L.LeafletMouseEvent, id: string) => {
+    if (mode === "split") {
+      L.DomEvent.stopPropagation(event.originalEvent);
+      const original=work.segments.find(s=>s.id===id);
+      if(!original)return;
+      const a=work.points.find(p=>p.id===original.from),b=work.points.find(p=>p.id===original.to);
+      if(!a||!b)return;
+      // Project the click onto the selected straight segment, avoiding off-line points.
+      const map=(event.target as L.Polyline & {_map:L.Map})._map;
+      const pa=map.latLngToLayerPoint([a.lat,a.lng]),pb=map.latLngToLayerPoint([b.lat,b.lng]),pc=map.latLngToLayerPoint(event.latlng);
+      const vx=pb.x-pa.x,vy=pb.y-pa.y,den=vx*vx+vy*vy;
+      if(!den)return;
+      const fraction=Math.max(0,Math.min(1,((pc.x-pa.x)*vx+(pc.y-pa.y)*vy)/den));
+      if(fraction<0.02||fraction>0.98){setMessage('Escolha uma posição afastada das extremidades.');return;}
+      const projected=map.layerPointToLatLng(L.point(pa.x+fraction*vx,pa.y+fraction*vy));
+      const middle:Point={id:uid(),lat:projected.lat,lng:projected.lng,name:`P-${work.points.length+1}`,createdAt:new Date().toISOString()};
+      const first={...original,id:uid(),name:`${original.name||'Trecho'} A`,to:middle.id,calculated:distance(a,middle),manual:original.manual===null?null:original.manual*fraction};
+      const second={...original,id:uid(),name:`${original.name||'Trecho'} B`,from:middle.id,calculated:distance(middle,b),manual:original.manual===null?null:original.manual*(1-fraction)};
+      const line=work.lines.find(l=>l.id===original.lineId);
+      const lines=line&&!work.segments.some(s=>s.id!==id&&s.lineId===line.id)?work.lines.filter(l=>l.id!==line.id):work.lines;
+      const leftLine={id:uid(),pointIds:[a.id,middle.id]},rightLine={id:uid(),pointIds:[middle.id,b.id]};
+      first.lineId=leftLine.id;second.lineId=rightLine.id;
+      onChange({...work,points:[...work.points,middle],lines:[...lines,leftLine,rightLine],segments:[...work.segments.filter(s=>s.id!==id),first,second]});
+      setHighlight('');setMessage('Trecho dividido. Revise os status e salve o croqui.');return;
+    }
     if (mode === "line" || mode === "point" || mode === "edit") return;
     L.DomEvent.stopPropagation(event.originalEvent);
     const map = (event.target as L.Polyline & { _map: L.Map })._map;
@@ -291,7 +324,7 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
 
   const focusBounds = useMemo(
     () =>
-      focusNonce
+      (focusNonce || readOnly)
         ? work.segments
             .flatMap((segment) => [
               byId.get(segment.from),
@@ -300,7 +333,7 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
             .filter((point): point is Point => !!point)
             .map((point) => [point.lat, point.lng] as [number, number])
         : null,
-    [focusNonce, work.segments, byId],
+    [focusNonce, readOnly, work.segments, byId],
   );
 
   const reset = () => {
@@ -310,7 +343,7 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
   };
 
   const add = (lat: number, lng: number) => {
-    if (!mode || mode === "edit" || readOnly) {
+    if (!mode || mode === "edit" || mode === "split" || readOnly) {
       return;
     }
 
@@ -322,6 +355,8 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
       id: uid(),
       lat,
       lng,
+      name:`P-${work.points.length+draft.length+1}`,
+      createdAt:new Date().toISOString(),
     };
 
     if (mode === "point") {
@@ -530,6 +565,7 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
               <MapPin size={15} /> Ponto
             </button>
 
+            <button className={mode === "split" ? "active" : ""} onClick={()=>{setMode('split');setDraft([])}}>Dividir trecho</button>
             <button
               className={mode === "line" ? "active" : ""}
               onClick={() => {
@@ -576,6 +612,8 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
         >
           {navigating || mode ? "VOLTAR À ROLAGEM" : "NAVEGAR NO MAPA"}
         </button>
+        <div className="sketch-extent-panel"><div>Extensão total <strong>{meters(calculatedLength(work))} m</strong></div><div>Executada <strong>{meters(executedLength(work))} m</strong></div><div>A executar <strong>{meters(Math.max(0,calculatedLength(work)-executedLength(work)))} m</strong></div></div>
+        {mode==='line'&&draft.length>0&&<div className="sketch-distance-panel">Distância: <strong>{meters(draft.slice(1).reduce((sum,p,i)=>sum+distance(draft[i],p),0)+(cursor?distance(draft[draft.length-1],{id:'',lat:cursor[0],lng:cursor[1]}):0))} m</strong></div>}
         <MapContainer
           key={work.id}
           center={center}
@@ -594,6 +632,7 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
           <MapGestures enabled={navigating || !!mode} />
           <SegmentLabels work={work} visible={labels} select={selectSegment} />
           <Clicks click={add} />
+          {mode==='line'&&<CursorTracker onMove={setCursor}/>}
           <Center target={target} />
 
           {work.segments.map((segment) => {
@@ -610,7 +649,7 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
                   ]}
                   pathOptions={{
                     color: segmentColor(segment.status),
-                    weight: highlight === segment.id ? 7 : 5,
+                    weight: highlight === segment.id || hoverSegment === segment.id ? 8 : 5,
                     interactive: false,
                   }}
                 />
@@ -627,6 +666,8 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
                   }}
                   eventHandlers={{
                     click: (event) => selectAt(event, segment.id),
+                    mouseover:()=>setHoverSegment(segment.id),
+                    mouseout:()=>setHoverSegment(null),
                   }}
                 />
               </Fragment>
@@ -683,7 +724,8 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
                 },
 
                 click: () => {
-                  if (mode) {
+                  if(mode==='edit'&&!readOnly){setSelectedPoint(point.id);return;}
+                  if (mode==='line'||mode==='point') {
                     add(point.lat, point.lng);
                   }
                 },
@@ -712,8 +754,9 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
         </MapContainer>
       </div>
 
+      {selectedPoint&&!readOnly&&<div className="diagnostic-modal" onClick={()=>setSelectedPoint(null)}><div className="diagnostic-modal-content sketch-point-dialog" onClick={e=>e.stopPropagation()}><h3>Dados do ponto</h3>{(()=>{const p=work.points.find(x=>x.id===selectedPoint);if(!p)return null;return <><label>Nome<input value={p.name||''} onChange={e=>onChange({...work,points:work.points.map(x=>x.id===p.id?{...x,name:e.target.value}:x)})}/></label><label>Tipo<input value={p.type||''} onChange={e=>onChange({...work,points:work.points.map(x=>x.id===p.id?{...x,type:e.target.value}:x)})}/></label><label>Observações<textarea value={p.notes||''} onChange={e=>onChange({...work,points:work.points.map(x=>x.id===p.id?{...x,notes:e.target.value}:x)})}/></label><p>Coordenadas: {p.lat.toFixed(6)}, {p.lng.toFixed(6)}</p><p>Cadastro: {p.createdAt?new Date(p.createdAt).toLocaleDateString('pt-BR'):'Registro anterior'}</p></>})()}<button onClick={()=>setSelectedPoint(null)}>Fechar</button></div></div>}
       <div className="section-head">
-        <strong>Trechos da obra ({work.segments.length})</strong>
+        <strong>Trechos cadastrados ({work.segments.length})</strong>
 
         <button
           onClick={() => setFocusNonce((current) => current + 1)}
@@ -921,6 +964,7 @@ export default function MapEditor({ work, onChange, readOnly = false }: Props) {
           </form>
         </div>
       )}
+      <div className="sketch-points-register"><strong>Pontos cadastrados ({work.points.length})</strong><div className="sketch-points-grid">{work.points.map((p,i)=><div key={p.id}><b>{p.name||`P-${String(i+1).padStart(3,'0')}`}</b><small>ID: {p.id}</small><span>{p.type||'Ponto'} · {p.lat.toFixed(6)}, {p.lng.toFixed(6)}</span>{p.notes&&<small>{p.notes}</small>}</div>)}</div></div>
       <div className="total-line">
         Extensão ativa:{" "}
         <b>

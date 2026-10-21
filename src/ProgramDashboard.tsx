@@ -11,10 +11,10 @@ const parse=(date:string)=>Date.parse(date+'T12:00:00');
 const startOfWeek=(ms:number)=>{const d=new Date(ms);const day=(d.getDay()+6)%7;return ms-day*DAY};
 const addMonths=(ms:number,n:number)=>{const d=new Date(ms);d.setMonth(d.getMonth()+n);return d.getTime()};
 const dateText=(date:string)=>date?new Date(parse(date)).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
-export default function ProgramDashboard<T extends Item>({items,search,onSearch,onOpen,onEdit,onProgress,statuses,onApply}:{items:T[];search:string;onSearch:(s:string)=>void;onOpen:(id:string)=>void;onEdit:(item:T)=>void;onProgress:(id:string)=>void;statuses:readonly string[];onApply:(f:Filters)=>void}){
+export default function ProgramDashboard<T extends Item>({items,search,onSearch,onOpen,onEdit,onProgress,statuses,onApply,cardStatus}:{items:T[];search:string;onSearch:(s:string)=>void;onOpen:(id:string)=>void;onEdit:(item:T)=>void;onProgress:(id:string)=>void;statuses:readonly string[];onApply:(f:Filters)=>void;cardStatus?:string|null}){
  const [open,setOpen]=useState(false),[field,setField]=useState<FilterKey|null>(null),[draft,setDraft]=useState<Filters>(empty),[applied,setApplied]=useState<Filters>(empty),[optionSearch,setOptionSearch]=useState('');
  const options=useMemo(()=>({city:[...new Set(items.map(i=>i.city).filter(Boolean))].sort(),status:statuses.filter(s=>s!=='CANCELADO'),priority:['Alta','Média','Baixa']}),[items,statuses]);
- const visible=useMemo(()=>items.filter(i=>i.status!=='CANCELADO'&&(!search||[i.address,i.city].join(' ').toLocaleLowerCase().includes(search.toLocaleLowerCase()))&&(['city','status','priority'] as FilterKey[]).every(k=>!applied[k].length||applied[k].includes(i[k]))),[items,search,applied]);
+ const visible=useMemo(()=>items.filter(i=>i.status!=='CANCELADO'&&(!cardStatus||i.status===cardStatus)&&(!search||[i.address,i.city].join(' ').toLocaleLowerCase().includes(search.toLocaleLowerCase()))&&(['city','status','priority'] as FilterKey[]).every(k=>!applied[k].length||applied[k].includes(i[k]))),[items,search,applied,cardStatus]);
  const dated=visible.filter(i=>i.plannedStart&&i.plannedEnd&&parse(i.plannedEnd)>=parse(i.plannedStart));
  const now=new Date();
  const today=parse(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`);

@@ -1,3 +1,4 @@
+import {SketchPreview} from "../ProgramProgress";
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Building2, Ruler, Cable, Users, Activity, Wallet } from "lucide-react";
 import {
@@ -314,6 +315,7 @@ function GeneralTimeline({
 }) {
   const today = useToday();
   const [previewWork, setPreviewWork] = useState<Work | null>(null);
+  const [sketchWork,setSketchWork]=useState<Work|null>(null);
   useEffect(() => {
     if (!previewWork) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -402,7 +404,11 @@ function GeneralTimeline({
                 <td data-label="PNG">{work.png}</td>
                 <td data-label="% EXEC.">
                   <div
-                    className="execution-progress"
+                    onClick={()=>setSketchWork(work)}
+                    onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSketchWork(work)}}}
+                    tabIndex={0}
+                    title="Abrir croqui da obra"
+                    className="execution-progress execution-progress-clickable"
                     role="progressbar"
                     aria-label={"Execução de " + work.address}
                     aria-valuemin={0}
@@ -467,6 +473,7 @@ function GeneralTimeline({
       {!range.hasDates && (
         <p className="hint">Nenhum período planejado informado.</p>
       )}
+      {sketchWork&&<SketchPreview item={sketchWork} onClose={()=>setSketchWork(null)}/>}
       {previewWork && (
         <div className="work-gantt-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreviewWork(null); }}>
           <div className="work-gantt-modal" role="dialog" aria-modal="true" aria-label="Cronograma da obra">

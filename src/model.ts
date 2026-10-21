@@ -168,6 +168,10 @@ export type Item = {
 
 export type Point = {
   id: string;
+  name?: string;
+  type?: string;
+  createdAt?: string;
+  notes?: string;
   lat: number;
   lng: number;
 };
