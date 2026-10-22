@@ -72,6 +72,7 @@ export function configureSyncTransport(value: SyncTransport | null) {
 let dbPromise: Promise<IDBDatabase> | undefined;
 
 let owner = "";
+let sessionVersion = 0;
 let syncing = false;
 
 const listeners = new Set<(state: SyncState) => void>();
@@ -86,6 +87,7 @@ const state: SyncState = {
 export function configureSync(id: string) {
   if (id !== owner) {
     owner = id;
+    sessionVersion++;
     dbPromise = undefined;
   }
 
@@ -112,6 +114,18 @@ const db = () => {
   }));
 };
 
+function assertSession(version: number) {
+  if (!owner || version !== sessionVersion) {
+    throw new Error("Sessão alterada durante a operação. Entre novamente.");
+  }
+}
+
+async function sessionDatabase(version = sessionVersion) {
+  const database = await db();
+  assertSession(version);
+  return database;
+}
+
 const request = <T>(operation: IDBRequest<T>) =>
   new Promise<T>((resolve, reject) => {
     operation.onsuccess = () => resolve(operation.result);
@@ -129,13 +143,20 @@ const completed = (transaction: IDBTransaction) =>
   });
 
 async function all<T>(store: "works" | "queue"): Promise<T[]> {
+  const version = sessionVersion;
   const database = await db();
-
-  return request<T[]>(database.transaction(store).objectStore(store).getAll());
+  if (!owner || version !== sessionVersion) return [];
+  const rows = await request<T[]>(
+    database.transaction(store).objectStore(store).getAll(),
+  );
+  return version === sessionVersion ? rows : [];
 }
 
 async function emit() {
+  const version = sessionVersion;
   const queue = owner ? await all<Pending>("queue") : [];
+
+  if (version !== sessionVersion) return;
 
   Object.assign(state, {
     pending: queue.length,
@@ -167,7 +188,7 @@ export async function pendingOperations() {
 }
 
 export async function enqueueWork(work: Work) {
-  const database = await db();
+  const database = await sessionDatabase();
 
   const transaction = database.transaction(["works", "queue"], "readwrite");
 
@@ -216,7 +237,8 @@ export async function mergeRemote(
     revision: number;
   }[],
 ) {
-  const database = await db();
+  const version = sessionVersion;
+  const database = await sessionDatabase(version);
 
   const transaction = database.transaction(["works", "queue"], "readwrite");
 
@@ -257,11 +279,12 @@ export async function mergeRemote(
 
   await done;
 
+  assertSession(version);
   return cachedWorks();
 }
 
 async function updatePending(item: Pending, patch: Partial<Pending>) {
-  const database = await db();
+  const database = await sessionDatabase();
 
   const transaction = database.transaction("queue", "readwrite");
 
@@ -282,7 +305,7 @@ async function updatePending(item: Pending, patch: Partial<Pending>) {
 }
 
 async function confirm(item: Pending, revision: number) {
-  const database = await db();
+  const database = await sessionDatabase();
 
   const transaction = database.transaction(["queue", "works"], "readwrite");
 
@@ -324,8 +347,12 @@ async function performFlush() {
   }
 
   const currentOwner = owner;
+  const version = sessionVersion;
 
-  if ((await transport.currentUser()) !== owner) {
+  if (
+    (await transport.currentUser()) !== currentOwner ||
+    version !== sessionVersion
+  ) {
     return;
   }
 
@@ -334,7 +361,7 @@ async function performFlush() {
 
   try {
     for (const item of await all<Pending>("queue")) {
-      if (owner !== currentOwner) {
+      if (owner !== currentOwner || version !== sessionVersion) {
         break;
       }
 
@@ -345,7 +372,7 @@ async function performFlush() {
       try {
         const data = await transport.save(item.work, item.baseRevision);
 
-        if (owner !== currentOwner) {
+        if (owner !== currentOwner || version !== sessionVersion) {
           break;
         }
 
@@ -366,7 +393,7 @@ async function performFlush() {
 
         await confirm(item, data.revision);
       } catch (error) {
-        if (owner !== currentOwner) {
+        if (owner !== currentOwner || version !== sessionVersion) {
           break;
         }
 
@@ -446,6 +473,7 @@ export async function retryErrors() {
 }
 
 export async function acceptRemote(id: string) {
+  const version = sessionVersion;
   if (!supabase) {
     throw new Error("Servidor indisponível");
   }
@@ -460,7 +488,7 @@ export async function acceptRemote(id: string) {
     throw error;
   }
 
-  const database = await db();
+  const database = await sessionDatabase(version);
 
   const transaction = database.transaction(["works", "queue"], "readwrite");
 
@@ -477,5 +505,6 @@ export async function acceptRemote(id: string) {
   await done;
   await emit();
 
+  assertSession(version);
   return syncStages(data.payload as Work);
 }

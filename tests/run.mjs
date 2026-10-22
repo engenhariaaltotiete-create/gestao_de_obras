@@ -137,3 +137,6 @@ test("auditoria guarda apenas campos alterados e ignora reordenação das entida
 });
 await import("./database.mjs");
 await import("./sketch.mjs");
+await import("./google-oauth.mjs");
+await import("./file-links.mjs");
+await import("./work-identity.mjs");

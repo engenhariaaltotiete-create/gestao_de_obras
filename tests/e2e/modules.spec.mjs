@@ -98,9 +98,22 @@ for (const mod of modules) {
     await login(page, mod, [active, cancelled]);
     await expect(page.locator(".diagnostic-table tbody tr")).toHaveCount(2);
     await nav(page, mod.dashboard);
-    await expect(page.locator(".diagnostic-gantt-row")).toHaveCount(1);
+    await expect(page.locator(".program-data-row")).toHaveCount(1);
     await nav(page, mod.label);
     await expect(page.locator(".diagnostic-table tbody tr")).toHaveCount(2);
+  });
+  test(`${mod.label}: pesquisa do dashboard mantém indicadores e tabela consistentes`, async ({
+    page,
+  }) => {
+    await login(page, mod, [record()]);
+    await nav(page, mod.dashboard);
+    await page
+      .getByRole("textbox", { name: "Pesquisar por endereço", exact: true })
+      .fill("Prefeitura");
+    await expect(page.locator(".program-data-row")).toHaveCount(0);
+    await expect(page.locator(".diagnostic-kpi strong").first()).toHaveText(
+      "0",
+    );
   });
   test(`${mod.label}: cadastro, validação de datas, edição e exclusão`, async ({
     page,
@@ -149,7 +162,8 @@ for (const mod of modules) {
     );
     expect(saved[0].plannedEnd).toBe("2026-11-10");
     await page
-      .getByRole("button", { name: "[TESTE] Cadastro funcional", exact: true })
+      .locator(".diagnostic-table tbody tr")
+      .filter({ hasText: "[TESTE] Cadastro funcional" })
       .click();
     page.once("dialog", (d) => d.accept());
     await page.getByRole("button", { name: mod.del, exact: true }).click();
@@ -161,7 +175,8 @@ for (const mod of modules) {
     const source = record();
     await login(page, mod, [source]);
     await page
-      .getByRole("button", { name: source.address, exact: true })
+      .locator(".diagnostic-table tbody tr")
+      .filter({ hasText: source.address })
       .click();
     await page.getByRole("button", { name: "Gerar Obra", exact: true }).click();
     await page
@@ -209,7 +224,8 @@ for (const mod of modules) {
     });
     await login(page, mod, [source]);
     await page
-      .getByRole("button", { name: source.address, exact: true })
+      .locator(".diagnostic-table tbody tr")
+      .filter({ hasText: source.address })
       .click();
     await page.getByRole("button", { name: "Gerar Obra", exact: true }).click();
     await page.getByLabel("Trechos selecionados", { exact: true }).check();
@@ -244,7 +260,10 @@ test("Diagnóstico → Topografia preserva o croqui e o vínculo de origem", asy
 }) => {
   const source = record();
   await login(page, modules[0], [source]);
-  await page.getByRole("button", { name: source.address, exact: true }).click();
+  await page
+    .locator(".diagnostic-table tbody tr")
+    .filter({ hasText: source.address })
+    .click();
   await page
     .getByRole("button", { name: "Gerar Topografia", exact: true })
     .click();

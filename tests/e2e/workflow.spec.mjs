@@ -571,3 +571,33 @@ test("cards azuis filtram diretamente pelo status da execução", async ({
   ).toBe(color);
   await expect(card.locator("svg")).toBeVisible();
 });
+
+test("consulta não permite dividir trechos após encerrar a edição do croqui", async ({
+  page,
+}) => {
+  await login(page);
+  await openWork(page);
+  const croqui = page
+    .locator("section.accordion")
+    .filter({ has: page.getByRole("button", { name: /^CROQUI DA OBRA/ }) });
+  await croqui.getByRole("button", { name: "EDITAR", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Dividir trecho", exact: true })
+    .click();
+  await croqui
+    .getByRole("button", { name: "Confirmar alterações", exact: true })
+    .click();
+  await expect(
+    croqui.getByRole("button", { name: "EDITAR", exact: true }),
+  ).toBeVisible();
+  const path = page
+    .locator(".leaflet-overlay-pane path.leaflet-interactive")
+    .last();
+  const box = await path.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.locator(".segment-list tbody tr")).toHaveCount(1);
+  await expect(
+    croqui.getByRole("button", { name: "EDITAR", exact: true }),
+  ).toBeVisible();
+});

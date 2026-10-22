@@ -9,11 +9,12 @@
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types tests/run.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:security": "node --test tests/drive-security.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
-    "jspdf": "^3.0.1",
+    "jspdf": "4.2.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
     "pdf-lib": "^1.17.1",

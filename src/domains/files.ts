@@ -176,70 +176,41 @@ export async function enqueueFile(
   return id;
 }
 
-export async function getFile(
-  id: string,
-) {
-  const local = (
-    await all()
-  ).find(
-    (file) =>
-      file.id === id &&
-      file.owner,
+export async function getFile(id: string) {
+  const currentOwner = await owner();
+  if (!currentOwner) throw new Error("Sessão inválida");
+  const local = (await all()).find(
+    (file) => file.id === id && file.owner === currentOwner,
   );
-
-  if (
-    local &&
-    local.owner === await owner()
-  ) {
-    return local.blob;
-  }
-
-  if (!supabase) {
-    throw new Error(
-      "Arquivo não disponível",
-    );
-  }
-
+  const assertOwner = async () => {
+    if ((await owner()) !== currentOwner) {
+      throw new Error("Sessão alterada durante o download. Entre novamente.");
+    }
+  };
+  await assertOwner();
+  if (local) return local.blob;
+  if (!supabase) throw new Error("Arquivo não disponível");
   const {
     data: { session },
   } = await supabase.auth.getSession();
-
-  if (!session) {
-    throw new Error(
-      "Sessão inválida",
-    );
-  }
-
+  if (!session || session.user.id !== currentOwner)
+    throw new Error("Sessão inválida");
   const response = await fetch(
-    import.meta.env.VITE_SUPABASE_URL +
-      "/functions/v1/drive-files",
+    import.meta.env.VITE_SUPABASE_URL + "/functions/v1/drive-files",
     {
       method: "POST",
       headers: {
-        Authorization:
-          "Bearer " +
-          session.access_token,
-        apikey:
-          import.meta.env
-            .VITE_SUPABASE_ANON_KEY,
-        "Content-Type":
-          "application/json",
+        Authorization: "Bearer " + session.access_token,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        action: "download",
-        id,
-      }),
+      body: JSON.stringify({ action: "download", id }),
     },
   );
-
-  if (!response.ok) {
-    throw new Error(
-      "Arquivo indisponível: " +
-        response.status,
-    );
-  }
-
-  return response.blob();
+  if (!response.ok) throw new Error("Arquivo indisponível: " + response.status);
+  const blob = await response.blob();
+  await assertOwner();
+  return blob;
 }
 
 export async function fileStatus() {

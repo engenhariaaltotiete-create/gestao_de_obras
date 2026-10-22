@@ -276,11 +276,16 @@ export async function authenticatedProfile(): Promise<User | null> {
         session.expires_at &&
         session.expires_at * 1000 > Date.now()
       ) {
-        const cached = JSON.parse(
-          localStorage.getItem("sgo-profile:" + session.user.id) || "null",
-        ) as User | null;
-
-        return cached?.active ? cached : null;
+        try {
+          const cached = JSON.parse(
+            localStorage.getItem("sgo-profile:" + session.user.id) || "null",
+          ) as User | null;
+          return cached?.active && cached.id === session.user.id
+            ? cached
+            : null;
+        } catch {
+          return null;
+        }
       }
     }
 
