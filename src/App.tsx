@@ -1,3 +1,4 @@
+import { exportExcel, exportWorkPdf } from "./domains/reportExport";
 import Topographies from "./Topographies";
 import Diagnostics from "./Diagnostics";
 import { auditRows, parseAuditValue, displayAuditValue } from "./domains/auditDisplay";
@@ -1621,6 +1622,7 @@ function App() {
                 <h1>Obras</h1>
                 <p>Acompanhamento de todas as obras cadastradas</p>
               </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button type="button" onClick={()=>exportExcel("Obra",workRows as unknown as Record<string,unknown>[])}>Exportar Excel (.xls)</button><button type="button" onClick={()=>exportExcel("Obra",works as unknown as Record<string,unknown>[])}>Exportar todas (.xls)</button></div>
               <button className="primary" onClick={newObra}>
                 <Plus size={16} /> Nova Obra
               </button>
@@ -1969,6 +1971,7 @@ function App() {
                   <ArrowLeft size={16} /> Voltar para {workOrigin === "dashboard" ? "Dashboard" : workOrigin === "carteira" ? "Carteira de Atividades" : "Obras"}
                 </button>
                 <h1>{current.address || "Nova obra"}</h1>
+                <button type="button" onClick={()=>exportWorkPdf(current)}>Gerar relatório PDF</button>
                 <p>
                   {current.city} · {current.service} ·{" "}
                   <Pill
