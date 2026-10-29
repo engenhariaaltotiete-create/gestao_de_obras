@@ -11,7 +11,6 @@ const val = (v: unknown) => v === undefined || v === null || v === '' ? '—' : 
 const date = (v: unknown) => { if (!v) return '—'; const s = String(v); const d = /^\d{4}-\d{2}-\d{2}/.exec(s); return d ? `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}` : s; };
 const num = (v: unknown) => Number(v) || 0;
 const fmt = (v: number, digits=2) => v.toLocaleString('pt-BR', {minimumFractionDigits:digits, maximumFractionDigits:digits});
-const money = (v: number) => 'R$ ' + fmt(v);
 const list = (v: unknown): Data[] => Array.isArray(v) ? v.filter((x): x is Data => !!x && typeof x === 'object' && !Array.isArray(x)) : [];
 const shortId = (v: unknown) => String(v || '—').slice(0,8).toUpperCase();
 
