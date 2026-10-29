@@ -15,19 +15,31 @@ export async function drawWorkMap(doc:jsPDF,record:Data,x:number,y:number,w:numb
  const canvas=document.createElement('canvas');const scale=4;canvas.width=Math.round(w*scale);canvas.height=Math.round(h*scale);
  const ctx=canvas.getContext('2d');if(!ctx)return;
  ctx.fillStyle='#eef3f4';ctx.fillRect(0,0,canvas.width,canvas.height);
- const minLat=Math.min(...valid.map(p=>Number(p.lat))),maxLat=Math.max(...valid.map(p=>Number(p.lat)));
- const minLng=Math.min(...valid.map(p=>Number(p.lng))),maxLng=Math.max(...valid.map(p=>Number(p.lng)));
- const centerLat=(minLat+maxLat)/2,centerLng=(minLng+maxLng)/2;
- const pad=Math.max(42,Math.min(canvas.width,canvas.height)*0.08);let zoom=2;
- for(let z=18;z>=2;z--){const a=merc(maxLat,minLng,z),b=merc(minLat,maxLng,z);if((b.x-a.x)*256<canvas.width-2*pad&&(b.y-a.y)*256<canvas.height-2*pad){zoom=z;break;}}
- const center=merc(centerLat,centerLng,zoom);const toPx=(p:Data)=>{const t=merc(Number(p.lat),Number(p.lng),zoom);return [(t.x-center.x)*256+canvas.width/2,(t.y-center.y)*256+canvas.height/2] as const;};
- const topLeftX=center.x-canvas.width/512,topLeftY=center.y-canvas.height/512;
- const minX=Math.floor(topLeftX),maxX=Math.floor(topLeftX+canvas.width/256),minY=Math.floor(topLeftY),maxY=Math.floor(topLeftY+canvas.height/256);
+ // Fit the full segment bounds to the PDF map viewport, with a small safety margin.
+ // Fractional display zoom avoids leaving large empty areas between integer OSM zoom levels.
+ const world=valid.map(p=>merc(Number(p.lat),Number(p.lng),0));
+ const minWorldX=Math.min(...world.map(p=>p.x)),maxWorldX=Math.max(...world.map(p=>p.x));
+ const minWorldY=Math.min(...world.map(p=>p.y)),maxWorldY=Math.max(...world.map(p=>p.y));
+ const pad=Math.max(22,Math.min(canvas.width,canvas.height)*0.055);
+ const spanX=(maxWorldX-minWorldX)*256,spanY=(maxWorldY-minWorldY)*256;
+ const fitX=spanX>0?(canvas.width-2*pad)/spanX:Infinity;
+ const fitY=spanY>0?(canvas.height-2*pad)/spanY:Infinity;
+ const displayZoom=Math.max(2,Math.min(21,Number.isFinite(Math.min(fitX,fitY))?Math.log2(Math.min(fitX,fitY)):19));
+ // OSM raster tiles are served at integer levels; scaling tiles locally allows
+ // smooth, precise fitting even beyond the highest tile zoom (19).
+ const tileZoom=Math.min(19,Math.floor(displayZoom));
+ const factor=2**(displayZoom-tileZoom);
+ const tileSize=256*factor;
+ const centerX=(minWorldX+maxWorldX)/2*2**tileZoom;
+ const centerY=(minWorldY+maxWorldY)/2*2**tileZoom;
+ const toPx=(p:Data)=>{const t=merc(Number(p.lat),Number(p.lng),tileZoom);return [(t.x-centerX)*tileSize+canvas.width/2,(t.y-centerY)*tileSize+canvas.height/2] as const;};
+ const topLeftX=centerX-canvas.width/(2*tileSize),topLeftY=centerY-canvas.height/(2*tileSize);
+ const minX=Math.floor(topLeftX),maxX=Math.floor(topLeftX+canvas.width/tileSize),minY=Math.floor(topLeftY),maxY=Math.floor(topLeftY+canvas.height/tileSize);
  const jobs:Promise<void>[]=[];
  for(let tx=minX;tx<=maxX;tx++)for(let ty=minY;ty<=maxY;ty++){
-  if(tx<0||ty<0||tx>=2**zoom||ty>=2**zoom)continue;
-  const dx=(tx-topLeftX)*256,dy=(ty-topLeftY)*256;
-  jobs.push(load(`https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`).then(img=>{if(img)ctx.drawImage(img,dx,dy,256,256);}));
+  if(tx<0||ty<0||tx>=2**tileZoom||ty>=2**tileZoom)continue;
+  const dx=(tx-topLeftX)*tileSize,dy=(ty-topLeftY)*tileSize;
+  jobs.push(load(`https://tile.openstreetmap.org/${tileZoom}/${tx}/${ty}.png`).then(img=>{if(img)ctx.drawImage(img,dx,dy,tileSize,tileSize);}));
  }
  await Promise.all(jobs);
  // Draw segments first. Place compact, rotated length labels above their lines.
