@@ -223,6 +223,11 @@ export type PhotoReport = {
 };
 
 export type Work = {
+  cancellationStatuses?: {
+    stages: Record<string, string>;
+    startDocs: Record<string, string>;
+    endDocs: Record<string, string>;
+  };
   originDiagnosticId?: string;
   originTopographyId?: string;
   dataValidated?: boolean;
@@ -377,9 +382,11 @@ export const executedLength = (work: Work) =>
     .reduce((sum, segment) => sum + segLength(segment), 0);
 
 export const executionPercent = (work: Work) =>
-  effectiveLength(work) > 0
-    ? (100 * executedLength(work)) / effectiveLength(work)
-    : 0;
+  !work.segments.length && executionStatus(work) === "CONCLUÍDO"
+    ? 100
+    : effectiveLength(work) > 0
+      ? (100 * executedLength(work)) / effectiveLength(work)
+      : 0;
 
 export const budgetTotal = (work: Work) =>
   work.budget.reduce((sum, row) => sum + row.quantity * row.unitPrice, 0);
@@ -411,7 +418,50 @@ export function syncStages(work: Work): Work {
         statusAt: work.createdAt,
       },
   );
-  const stages = canonical.map((stage) => {
+  work = { ...work, stages: canonical };
+  const groups = ["stages", "startDocs", "endDocs"] as const;
+  const cancelled = executionStatus(work) === "CANCELADO";
+  if (cancelled) {
+    const cancellationStatuses = work.cancellationStatuses || {
+      stages: Object.fromEntries(work.stages.map((i) => [i.id, i.status])),
+      startDocs: Object.fromEntries(
+        work.startDocs.map((i) => [i.id, i.status]),
+      ),
+      endDocs: Object.fromEntries(work.endDocs.map((i) => [i.id, i.status])),
+    };
+    const next = { ...work, cancellationStatuses };
+    for (const group of groups) {
+      next[group] = work[group].map((item) =>
+        item.status === "CANCELADO"
+          ? item
+          : {
+              ...item,
+              status: "CANCELADO",
+              statusAt: new Date().toISOString(),
+            },
+      );
+    }
+    return next;
+  }
+  if (work.cancellationStatuses) {
+    const snapshot = work.cancellationStatuses;
+    work = { ...work };
+    for (const group of groups) {
+      work[group] = work[group].map((item) => {
+        if (group === "stages" && item.name === "Execução de Obra") return item;
+        const status = snapshot[group][item.id];
+        return status === undefined || status === item.status
+          ? item
+          : {
+              ...item,
+              status,
+              statusAt: new Date().toISOString(),
+            };
+      });
+    }
+    delete work.cancellationStatuses;
+  }
+  const stages = work.stages.map((stage) => {
     if (!isChecklist(stage.name)) {
       return stage;
     }

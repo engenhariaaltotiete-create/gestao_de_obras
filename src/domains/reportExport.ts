@@ -76,7 +76,7 @@ const isObject = (v: unknown): v is RecordData =>
   !!v && typeof v === "object" && !Array.isArray(v);
 const hidden = (key: string, value: unknown) =>
   key.startsWith("_") ||
-  ["file", "blob", "base64", "dataUrl", "url"].includes(key) ||
+  ["file", "blob", "base64", "dataUrl", "url", "cancellationStatuses"].includes(key) ||
   (key === "data" &&
     typeof value === "string" &&
     /^(data:|blob:)/i.test(value));

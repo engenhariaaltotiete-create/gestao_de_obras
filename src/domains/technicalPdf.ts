@@ -85,11 +85,21 @@ export async function generateTechnicalPdf(kind: Kind, record: Data, opts: Opts 
     const halfW=88,gap=4;
     for(let i=0;i<fields.length;i+=2){
       const cells=fields.slice(i,i+2).map(([key,value])=>({key,lines:doc.splitTextToSize(val(value),halfW-5) as string[]}));
-      const height=Math.max(...cells.map(c=>5+c.lines.length*3.1),9);
-      ensure(height+1);
-      cells.forEach((c,j)=>{const x=L+j*(halfW+gap);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(52,66,82);doc.text(c.key,x+2,y+3);doc.setFont('helvetica','bold');doc.setTextColor(34,45,57);doc.text(c.lines,x+2,y+6.4,{lineHeightFactor:1.1});});
-      doc.setDrawColor(220,228,235);doc.setLineWidth(.15);doc.line(L,y+height,R,y+height);
-      y+=height;
+      const rows=Math.max(...cells.map(c=>c.lines.length),1);
+      const fullHeight=Math.max(5+rows*3.1,9);
+      if(fullHeight+1<=BOTTOM-TOP) ensure(fullHeight+1);
+      let pos=0;
+      while(pos<rows){
+        ensure(10);
+        const count=Math.min(rows-pos,Math.max(1,Math.floor((BOTTOM-y-6)/3.1)));
+        const height=Math.max(5+count*3.1,9);
+        cells.forEach((c,j)=>{
+          const lines=c.lines.slice(pos,pos+count);if(!lines.length)return;
+          const x=L+j*(halfW+gap);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(52,66,82);doc.text(c.key,x+2,y+3);doc.setFont('helvetica','bold');doc.setTextColor(34,45,57);doc.text(lines,x+2,y+6.4,{lineHeightFactor:1.1});
+        });
+        doc.setDrawColor(220,228,235);doc.setLineWidth(.15);doc.line(L,y+height,R,y+height);
+        y+=height;pos+=count;
+      }
     }
   } else {
     title(kind==='Diagnóstico'?'Dados do diagnóstico':'Dados da topografia');

@@ -962,6 +962,8 @@ function App() {
   const [workOrigin, setWorkOrigin] = useState<"dashboard" | "obras" | "carteira">("obras");
   const [query, setQuery] = useState("");
   const [portfolioWorkIds, setPortfolioWorkIds] = useState<string[]>([]);
+  const [portfolioAE, setPortfolioAE] = useState("all");
+  const [portfolioCard, setPortfolioCard] = useState<number[]>([]);
   const [portfolioGroup, setPortfolioGroup] = useState("all");
   const [portfolioActivity, setPortfolioActivity] = useState("all");
   const [portfolioStatus, setPortfolioStatus] = useState("all");
@@ -973,7 +975,7 @@ function App() {
   const [portfolioFiltersOpen, setPortfolioFiltersOpen] = useState(false);
   const [appliedPortfolio, setAppliedPortfolio] = useState({
     workIds: [] as string[],
-    group: "all", activity: "all", status: "all", responsible: "all",
+    ae: "all", group: "all", activity: "all", status: "all", responsible: "all",
     dateKind: "end", from: "", to: "", quick: "all",
   });
 
@@ -1152,6 +1154,9 @@ function App() {
     id: string,
     patch: Partial<Item>,
   ) => {
+    const target = w[kind].find(i => i.id === id);
+    if (patch.status && executionStatus(w) === "CANCELADO" &&
+        !(kind === "stages" && target?.name === "Execução de Obra")) return;
     const items = w[kind].map((i) => {
       if (i.id !== id) return i;
 
@@ -1283,15 +1288,16 @@ function App() {
     }
     return true;
   };
-  const portfolioActiveFilters = [appliedPortfolio.group, appliedPortfolio.activity,
+  const portfolioActiveFilters = [appliedPortfolio.ae, appliedPortfolio.group, appliedPortfolio.activity,
     appliedPortfolio.status, appliedPortfolio.responsible, appliedPortfolio.quick]
     .filter(value => value !== "all").length + appliedPortfolio.workIds.length + Number(!!appliedPortfolio.from) + Number(!!appliedPortfolio.to);
   const resetPortfolioFilters = () => {
+    setPortfolioAE("all"); setPortfolioCard([]);
     setPortfolioWorkIds([]);
     setPortfolioGroup("all"); setPortfolioActivity("all"); setPortfolioStatus("all");
     setPortfolioResponsible("all"); setPortfolioDateKind("end");
     setPortfolioFrom(""); setPortfolioTo(""); setPortfolioQuick("all");
-    setAppliedPortfolio({workIds: [], group:"all", activity:"all", status:"all", responsible:"all",
+    setAppliedPortfolio({workIds: [], ae:"all", group:"all", activity:"all", status:"all", responsible:"all",
       dateKind:"end", from:"", to:"", quick:"all"});
   };
 
@@ -1302,12 +1308,14 @@ function App() {
         items: group.items.filter(
           (i) =>
             (!appliedPortfolio.workIds.length || appliedPortfolio.workIds.includes(group.w.id)) &&
+            (appliedPortfolio.ae === "all" || group.w.ae === appliedPortfolio.ae) &&
+            (!portfolioCard.length || (group.kind === "stages" && portfolioCard.some(index => STAGES[index] === i.name))) &&
             (!myPortfolio || i.responsible === user?.id) &&
             matchesQuery(group.w, query, users, [i]) &&
             portfolioMatch(group.kind, i),
         ),
       })),
-    [allItems, myPortfolio, user?.id, query, users, appliedPortfolio],
+    [allItems, myPortfolio, user?.id, query, users, appliedPortfolio, portfolioCard],
   );
 
   const activityCounts = useMemo(() => {
@@ -1325,6 +1333,7 @@ function App() {
 
     return mapping.map(([name, indices]) => ({
       name,
+      indices,
       count: portfolio
         .filter((g) => g.kind === "stages")
         .flatMap((g) => g.items)
@@ -1762,13 +1771,15 @@ function App() {
 
             <div className="kpis seven portfolio-kpis">
               {activityCounts.map((x) => (
-                <div className="kpi" key={x.name}>
+                <button type="button" className={"kpi " + (portfolioCard[0] === x.indices[0] ? "chosen" : "")}
+                  aria-pressed={portfolioCard[0] === x.indices[0]} key={x.name}
+                  onClick={() => setPortfolioCard(current => current[0] === x.indices[0] ? [] : x.indices)}>
                   <span className="kpi-icon"><ClipboardList size={19} aria-hidden="true" /></span>
                   <span>
                     <small>{x.name}</small>
                     <strong>{x.count}</strong>
                   </span>
-                </div>
+                </button>
               ))}
             </div>
 
@@ -1808,6 +1819,12 @@ function App() {
                   value={works.filter(w => portfolioWorkIds.includes(w.id)).map(w => workFilterLabel(works, w))}
                   onChange={values => setPortfolioWorkIds(works.filter(w => values.includes(workFilterLabel(works, w))).map(w => w.id))}
                 />
+                <label>A/E
+                  <select value={portfolioAE} onChange={e => setPortfolioAE(e.target.value)}>
+                    <option value="all">Todos</option>
+                    {[...new Set(["Água", "Esgoto", ...works.map(w => w.ae).filter(Boolean)])].map(ae => <option key={ae} value={ae}>{ae}</option>)}
+                  </select>
+                </label>
                 <label>Grupo
                   <select value={portfolioGroup} onChange={(e) => {setPortfolioGroup(e.target.value);setPortfolioActivity("all");}}>
                     <option value="all">Todos os grupos</option>
@@ -1857,7 +1874,7 @@ function App() {
               <div className="portfolio-filter-actions">
                 <button type="button" onClick={resetPortfolioFilters}>Limpar filtros</button>
                 <button type="button" className="portfolio-apply-button" onClick={() => {
-                  setAppliedPortfolio({workIds: portfolioWorkIds, group:portfolioGroup, activity:portfolioActivity,
+                  setAppliedPortfolio({workIds: portfolioWorkIds, ae:portfolioAE, group:portfolioGroup, activity:portfolioActivity,
                     status:portfolioStatus, responsible:portfolioResponsible,
                     dateKind:portfolioDateKind, from:portfolioFrom, to:portfolioTo, quick:portfolioQuick});
                   setPortfolioFiltersOpen(false);
@@ -2230,6 +2247,7 @@ function App() {
                     ) : (
                       <select
                         value={i.status}
+                        disabled={executionStatus(w) === "CANCELADO" && !(editItem.kind === "stages" && i.name === "Execução de Obra")}
                         onChange={(e) =>
                           changeItem(w, editItem.kind, i.id, {
                             status: e.target.value,

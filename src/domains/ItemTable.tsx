@@ -1,5 +1,6 @@
 import {
   isChecklist,
+  executionStatus,
   STAGE_STATUS,
   DOC_STATUS,
   statusColor,
@@ -79,6 +80,7 @@ export default function ItemTable({
                   ) : (
                     <select
                       value={item.status}
+                      disabled={executionStatus(work) === "CANCELADO" && !(kind === "stages" && item.name === "Execução de Obra")}
                       className={
                         "status-select " + statusColor(item.status, item.end)
                       }

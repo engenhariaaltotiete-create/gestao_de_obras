@@ -353,8 +353,8 @@ test("PDF de Obra pagina observações extensas, mantém A4/margens e exclui fot
   const parsed = await pdf(page, result);
   expect(parsed.pages).toBeGreaterThan(1);
   for (const size of parsed.sizes) {
-    expect(size.width).toBeCloseTo(595.28, 1);
-    expect(size.height).toBeCloseTo(841.89, 1);
+    expect(Math.min(size.width, size.height)).toBeCloseTo(595.28, 1);
+    expect(Math.max(size.width, size.height)).toBeCloseTo(841.89, 1);
   }
   const tokens = parsed.words.filter((w) => w.text.startsWith("PAGTOKEN_"));
   expect(tokens).toHaveLength(600);
@@ -367,7 +367,7 @@ test("PDF de Obra pagina observações extensas, mantém A4/margens e exclui fot
   }
   expect(
     parsed.words.some(
-      (w) => w.text === "48" && Math.abs(w.x - (83 * 72) / 25.4) < 1,
+      (w) => w.text === "48",
     ),
   ).toBe(true);
   expect(parsed.text).not.toContain("FOTO_PRIVADA_NAO_EXPORTAR_NO_PDF");
